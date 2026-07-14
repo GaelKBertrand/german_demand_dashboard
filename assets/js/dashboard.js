@@ -1,264 +1,703 @@
 /* ============================================================================
-   DASHBOARD RENDER LOGIC
-   Same structure/variables as the original dashboard:
-     APP  — filter + view state
-     DATA — { lookup, rows[8-int], meta, roleTable, stateGeo, companies, records }
-     getRows() — filters DATA.rows by state / employer sector / genuine
-   Everything below reads that model and draws with Plotly + Leaflet.
+   GATI SECTOR DASHBOARD  —  render engine.
+   ----------------------------------------------------------------------------
+   A faithful port of the original single-file healthcare dashboard's full
+   analysis (all six tabs), driven by the CSV-built DATA model from
+   data-loader.js and GENERALISED so any sector renders identically:
+     • role groups come from DATA.roleGroups (top ISCO-3), not hardcoded codes
+     • cross-tab, trend and role deep-dives build from those groups
+     • employer-sector colours fall back to a palette for non-health sectors
+     • the About/Methods and Qualifications tabs load per-sector HTML from
+       /content (see sector.staticTabs); absent → tab simply doesn't appear
+   Tabs 1-4 (Overview, Roles, Regional, Explorer) are 100% data-driven.
    ============================================================================ */
 
-var C = { teal:"#0F5B5A", tealDeep:"#08403F", tealSoft:"#E3EFED", gold:"#C4880C",
-          ink:"#12302E", muted:"#7A928E", line:"#E4E1D8", teal2:"#2D9B9A" };
-
-var APP = { filterState:"ALL", filterIsic:"ALL", filterGenuine:false,
-            activeTab:"overview", map:null, expLimit:60, expQuery:"" };
-
+/* ======= APP STATE ======================================================== */
+var APP = { filterState:'ALL', filterIsic:'ALL', filterGenuine:true,
+            activeTab:'overview', activeRole:null,
+            leafletMap:null, mapInit:false,
+            sector:null, region:null };
 var DATA = null;
 
-/* 16 German state centroids [lat, lng] — keyed by the English names the
-   classifiers emit. Used for the Leaflet bubble map (no GeoJSON needed). */
-var STATE_CENTROIDS = {
-  "Baden-Württemberg":[48.66,9.35],"Bavaria":[48.79,11.50],"Berlin":[52.52,13.40],
-  "Brandenburg":[52.13,13.20],"Bremen":[53.08,8.80],"Hamburg":[53.55,10.00],
-  "Hesse":[50.65,9.16],"Lower Saxony":[52.64,9.85],"Mecklenburg-Vorpommern":[53.61,12.43],
-  "North Rhine-Westphalia":[51.43,7.55],"Rhineland-Palatinate":[49.91,7.45],"Saarland":[49.38,6.95],
-  "Saxony":[51.10,13.20],"Saxony-Anhalt":[51.95,11.69],"Schleswig-Holstein":[54.22,9.70],
-  "Thuringia":[50.90,11.03]
-};
-
-var PBASE = {
-  paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
-  font:{ family:"'Inter',sans-serif", size:12, color:C.ink },
-  margin:{ l:8, r:16, t:6, b:30 }, bargap:0.30,
-  xaxis:{ gridcolor:C.line, zeroline:false, tickfont:{size:11}, automargin:true },
-  yaxis:{ automargin:true, tickfont:{size:11.5} }
-};
-var PCFG = { displayModeBar:false, responsive:true };
-var fmt = function (n) { return Number(n).toLocaleString("en-US"); };
-
-/* -------- filtering (identical logic to the original getRows) -------- */
-function getRows() {
-  var si = APP.filterState !== "ALL" ? DATA.lookup.states.indexOf(APP.filterState) : -999;
-  var ii = APP.filterIsic  !== "ALL" ? DATA.lookup.isic.indexOf(APP.filterIsic)  : -999;
-  return DATA.rows.filter(function (r) {
-    if (si !== -999 && r[0] !== si) return false;
-    if (ii !== -999 && r[1] !== ii) return false;
-    if (APP.filterGenuine && r[6] === 1) return false;
-    return true;
-  });
-}
-function countBy(rows, idx) {
-  var c = {}; rows.forEach(function (r) { var k = r[idx]; c[k] = (c[k] || 0) + 1; }); return c;
+/* ======= PALETTE / PLOTLY BASE ========================================== */
+var C = { teal:'#1A7B7A', tealD:'#0F5B5A', tealL:'#E5F2F2', gold:'#D4940A',
+          textD:'#0F2E2E', textM:'#3D6060', textL:'#7A9C9C', border:'#D4E5E5',
+          coral:'#D94F3D', teal2:'#2D9B9A',
+          emp:['#1A7B7A','#4AABAA','#B8D9D9','#D4940A','#E8A820','#0F5B5A'] };
+var ISIC_PALETTE = ['#1A7B7A','#D4940A','#2D9B9A','#E8A820','#0F5B5A','#B8D9D9',
+                    '#4AABAA','#C4880C','#3B6E8F','#7FBFBF'];
+var _isicColMap = {};
+function isicColor(name){
+  if (typeof ISIC_COLORS !== 'undefined' && ISIC_COLORS[name]) return ISIC_COLORS[name];
+  if (!(name in _isicColMap)){
+    var used = Object.keys(_isicColMap).length;
+    _isicColMap[name] = ISIC_PALETTE[used % ISIC_PALETTE.length];
+  }
+  return _isicColMap[name];
 }
 
-/* -------- init -------- */
-document.addEventListener("DOMContentLoaded", function () {
-  var params = new URLSearchParams(location.search);
-  var sector = getSector(params.get("sector"));
-  if (!sector) { fail("Unknown sector. Return to the <a href='index.html'>dashboard list</a>."); return; }
+/* ISCO-2 major-group names for the weekly-trend legend (fallback: "ISCO NN"). */
+var ISCO2_NAMES = {
+  14:'Hospitality & Retail Managers', 21:'Science & Engineering', 22:'Health Professionals',
+  23:'Teaching Professionals', 24:'Business & Admin Professionals', 25:'ICT Professionals',
+  26:'Legal, Social & Cultural', 31:'Science & Engineering Technicians',
+  32:'Health Associate Professionals', 33:'Business & Admin Associates',
+  34:'Legal, Social & Cultural Associates', 35:'ICT Technicians',
+  41:'General & Keyboard Clerks', 42:'Customer-Service Clerks',
+  43:'Numerical & Material-Recording Clerks', 44:'Other Clerical Support',
+  51:'Personal Service Workers', 52:'Sales Workers', 53:'Personal Care Workers',
+  54:'Protective Services', 71:'Building & Related Trades', 72:'Metal & Machinery Trades',
+  73:'Handicraft & Printing', 74:'Electrical & Electronic Trades',
+  75:'Food-Processing & Craft', 81:'Stationary Plant & Machine Operators',
+  82:'Assemblers', 83:'Drivers & Mobile-Plant Operators',
+  91:'Cleaners & Helpers', 92:'Agricultural Labourers',
+  93:'Labourers (Mining, Construction, Transport)', 94:'Food-Preparation Assistants',
+  95:'Street & Related Sales', 96:'Refuse & Other Elementary Workers' };
+var TREND_COLS = ['#1A7B7A','#D4940A','#2D9B9A','#0F5B5A','#E8A820'];
 
-  document.title = "GATI · " + sector.label;
-  document.getElementById("db-title").textContent = sector.label;
-  document.getElementById("db-eyebrow").textContent = "Germany · " + sector.scope;
+var pc   = { displayModeBar:false, responsive:true };
+var base = { paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+             font:{family:"'Outfit',sans-serif",color:C.textD,size:11},
+             margin:{l:8,r:8,t:12,b:8},
+             hoverlabel:{bgcolor:'#fff',bordercolor:C.border,font:{family:'Outfit',size:12,color:C.textD}} };
+var fmt = function(n){ return Number(n).toLocaleString('en-US'); };
+var pct = function(n,d){ return d>0 ? (n/d*100).toFixed(1) : '0.0'; };
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  showStatus('<div class="spinner"></div>Loading ' + sector.label + ' data…');
-
-  loadSectorData(sector).then(function (data) {
-    DATA = data;
-    hideStatus();
-    if (!DATA.rows.length) { fail("No classified rows found in this CSV yet."); return; }
-    populateFilters();
-    document.getElementById("db-meta").innerHTML =
-      '<span class="chip">' + fmt(DATA.meta.total) + ' postings</span>' +
-      '<span class="chip">' + DATA.meta.dateRange + '</span>';
-    wireFilters();
-    renderAll();
-  }).catch(function (err) {
-    fail("Couldn't load <code>" + csvUrlFor(sector) + "</code>.<br>" +
-         "Make sure the CSV exists at that path (see <code>assets/js/sectors.js</code>).<br>" +
-         '<span class="muted" style="font-size:12px">' + (err && err.message ? err.message : err) + "</span>");
+/* part-time-ish indices, derived once from the sector's employment lookup. */
+var PT_IDX = {};
+function computePartTime(){
+  PT_IDX = {};
+  (DATA.lookup.empTypes||[]).forEach(function(l,i){
+    if (l==='Part-time' || l==='Full-time or Part-time') PT_IDX[i]=true;
   });
+}
+
+/* ======= BOOT ============================================================= */
+function qs(k){ return new URLSearchParams(location.search).get(k); }
+
+window.addEventListener('load', function(){
+  var id = qs('sector') || (typeof SECTORS!=='undefined' && SECTORS[0] && SECTORS[0].id) || 'healthcare';
+  var sector = (typeof getSector==='function' && getSector(id)) || null;
+  if (!sector){ showError('Unknown sector', 'No sector <code>'+esc(id)+'</code> is configured in sectors.js.'); return; }
+  APP.sector = sector;
+  APP.region = (typeof regionFor==='function') ? regionFor(sector) : null;
+
+  /* header + switcher + footer chrome */
+  document.getElementById('hdr-t1').textContent = sector.label + ' Demand Intelligence';
+  document.getElementById('hdr-t2').textContent =
+    (APP.region ? APP.region.label : 'Germany') + ' · ' + (sector.source || 'StepStone Germany');
+  document.getElementById('map-head').textContent = sector.label + ' Vacancies Across ' + (APP.region? APP.region.label : 'Germany');
+  document.getElementById('foot-sector').textContent = sector.label;
+  document.title = 'GATI · ' + sector.label + ' Demand Intelligence';
+  buildSwitcher(sector.id);
+
+  loadSectorData(sector.id)
+    .then(function(built){
+      DATA = built;
+      if (!DATA.rows.length){
+        showError('No classified postings found',
+          'The file <code>'+esc(csvUrlFor(sector))+'</code> loaded, but no rows survived the in-scope / classified filter. '+
+          'Check that the CSV has the classifier\'s final columns (ISCO_4, ISCO_4_name, State, Employer_Category, Scope_Category).');
+        return;
+      }
+      initDashboard();
+    })
+    .catch(function(err){
+      showError('Could not load sector data',
+        'Tried to fetch <code>'+esc(csvUrlFor(sector))+'</code>. '+
+        'If testing locally, serve over http (e.g. <code>python3 -m http.server</code>) — opening the file directly is blocked by the browser. '+
+        '<br><span style="color:#7A9C9C">'+esc(String(err&&err.message||err))+'</span>');
+    });
 });
 
-function populateFilters() {
-  var st = document.getElementById("flt-state");
-  DATA.lookup.states.forEach(function (s) { st.add(new Option(s, s)); });
-  var ic = document.getElementById("flt-isic");
-  DATA.lookup.isic.forEach(function (s) { ic.add(new Option(s, s)); });
+function buildSwitcher(activeId){
+  var sel = document.getElementById('hdr-switch');
+  if (!sel || typeof SECTORS==='undefined') return;
+  sel.innerHTML = SECTORS.map(function(s){
+    return '<option value="'+s.id+'"'+(s.id===activeId?' selected':'')+'>'+esc(s.label)+'</option>';
+  }).join('');
 }
-function wireFilters() {
-  document.getElementById("flt-state").addEventListener("change", function (e) { APP.filterState = e.target.value; renderAll(); });
-  document.getElementById("flt-isic").addEventListener("change", function (e) { APP.filterIsic = e.target.value; renderAll(); });
-  document.getElementById("flt-genuine").addEventListener("change", function (e) { APP.filterGenuine = e.target.checked; renderAll(); });
-  document.getElementById("exp-search").addEventListener("input", function (e) { APP.expQuery = e.target.value.toLowerCase().trim(); APP.expLimit = 60; renderExplorer(); });
-  document.getElementById("exp-more").addEventListener("click", function () { APP.expLimit += 60; renderExplorer(); });
+function switchSector(id){ location.href = 'dashboard.html?sector=' + encodeURIComponent(id); }
+
+function showError(title, msg){
+  var s = document.getElementById('db-status');
+  s.innerHTML = '<div class="status-card"><h2>'+esc(title)+'</h2><p>'+msg+'</p>'+
+    '<p style="margin-top:12px"><a href="index.html" style="color:#1A7B7A;font-weight:600;text-decoration:none">&larr; Back to all dashboards</a></p></div>';
+  s.hidden = false;
 }
 
-/* -------- tabs -------- */
-function showTab(id, btn) {
-  document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("is-active"); });
-  document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("is-active"); });
-  document.getElementById("tab-" + id).classList.add("is-active");
-  btn.classList.add("is-active");
-  APP.activeTab = id;
-  var rows = getRows();
-  if (id === "roles") renderRoleTable(rows);
-  if (id === "regional") { renderStateTable(rows); renderMap(rows); }
-  if (id === "explorer") renderExplorer();
+/* ======= INIT ============================================================= */
+function initDashboard(){
+  computePartTime();
+  populateFilters();
+  buildRoleTab();
+  buildStaticTabs();
+  document.getElementById('db-status').hidden = true;
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.hidden = false; });
+  fillDataBanner();
+  renderAll();
+  renderExplorer();
 }
 
-/* -------- render orchestrator -------- */
-function renderAll() {
-  var rows = getRows();
-  document.getElementById("filter-count").textContent = fmt(rows.length) + " postings";
-  updateKPIs(rows);
-  renderTop(rows);
-  renderIsic(rows);
-  renderTrend(rows);
-  if (APP.activeTab === "roles") renderRoleTable(rows);
-  if (APP.activeTab === "regional") { renderStateTable(rows); renderMap(rows); }
-  if (APP.activeTab === "explorer") renderExplorer();
+function populateFilters(){
+  var st = document.getElementById('flt-state');
+  st.innerHTML = '<option value="ALL">All States</option>' +
+    DATA.lookup.states.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  var ic = document.getElementById('flt-isic');
+  ic.innerHTML = '<option value="ALL">All Employer Types</option>' +
+    DATA.lookup.isic.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  document.getElementById('flt-genuine').checked = APP.filterGenuine;
 }
 
-/* -------- KPIs -------- */
-function updateKPIs(rows) {
-  var total = rows.length;
-  var occ = countBy(rows, 4);
-  var distinct = Object.keys(occ).length;
-  var topOccIdx = topKeyNum(occ);
-  var topOcc = topOccIdx != null ? DATA.lookup.isco4[topOccIdx] : "—";
-  var topOccN = topOccIdx != null ? occ[topOccIdx] : 0;
-  var ptSet = {};
-  DATA.lookup.empTypes.forEach(function (e, i) { if (e === "Part-time" || e === "Full-time or Part-time") ptSet[i] = 1; });
-  var pt = rows.filter(function (r) { return ptSet[r[5]]; }).length;
-  var ptPct = total ? Math.round(pt / total * 100) : 0;
-
-  document.getElementById("kpis").innerHTML =
-    kpi(fmt(total), "postings in view", "", false) +
-    kpi(fmt(distinct), "distinct occupations", "", false) +
-    kpi(clip(topOcc, 22), "most-posted occupation", fmt(topOccN) + " postings", true) +
-    kpi(ptPct + "%", "part-time or flexible", "", false);
-}
-function kpi(val, label, sub, gold) {
-  return '<div class="kpi' + (gold ? " kpi--gold" : "") + '">' +
-    '<div class="kpi__val">' + val + '</div>' +
-    '<div class="kpi__label">' + label + '</div>' +
-    (sub ? '<div class="kpi__sub">' + sub + '</div>' : "") + '</div>';
+function fillDataBanner(){
+  var m = DATA.meta, s = APP.sector;
+  var items = [
+    ['Source', s.source || 'StepStone Germany'],
+    ['Period', m.dateRange || '—'],
+    ['Postings Loaded', fmt(m.scraped)],
+    ['In-scope '+s.label+' Postings', fmt(m.total)],
+    ['Classification', 'ISCO-08 (ILO) · Employer sector (ISIC Rev.4)']
+  ];
+  document.getElementById('data-banner').innerHTML = items.map(function(it,i){
+    return (i? '<span class="db-sep">|</span>' : '') +
+      '<div class="db-item"><span class="db-label">'+esc(it[0])+'</span><span class="db-val">'+esc(it[1])+'</span></div>';
+  }).join('');
 }
 
-/* -------- overview charts -------- */
-function renderTop(rows) {
-  var c = countBy(rows, 4);
-  var top = Object.keys(c).map(Number).sort(function (a, b) { return c[b] - c[a]; }).slice(0, 10).reverse();
-  var y = top.map(function (i) { return clip(DATA.lookup.isco4[i], 34); });
-  var x = top.map(function (i) { return c[i]; });
-  var lay = Object.assign({}, PBASE, { xaxis: Object.assign({}, PBASE.xaxis), yaxis: Object.assign({}, PBASE.yaxis) });
-  Plotly.react("chart-top", [{
-    type:"bar", orientation:"h", x:x, y:y,
-    marker:{ color:C.teal }, hovertemplate:"%{y}<br>%{x} postings<extra></extra>"
-  }], lay, PCFG);
-}
-function renderIsic(rows) {
-  var c = countBy(rows, 1);
-  var keys = Object.keys(c).map(Number).sort(function (a, b) { return c[b] - c[a]; });
-  Plotly.react("chart-isic", [{
-    type:"bar", x: keys.map(function (i) { return clip(DATA.lookup.isic[i], 22); }),
-    y: keys.map(function (i) { return c[i]; }),
-    marker:{ color:C.teal2 }, hovertemplate:"%{x}<br>%{y} postings<extra></extra>"
-  }], PBASE, PCFG);
-}
-function renderTrend(rows) {
-  var labels = DATA.lookup.weekLabels;
-  var y = labels.map(function (_, i) { return rows.filter(function (r) { return r[7] === i; }).length; });
-  Plotly.react("chart-trend", [{
-    type:"scatter", mode:"lines+markers", x:labels, y:y,
-    line:{ color:C.teal, width:2.5, shape:"spline" }, marker:{ color:C.teal, size:6 },
-    fill:"tozeroy", fillcolor:"rgba(15,91,90,.07)", hovertemplate:"%{x}<br>%{y} postings<extra></extra>"
-  }], PBASE, PCFG);
-}
-
-/* -------- roles table (live, respects filters) -------- */
-function renderRoleTable(rows) {
-  var g = {};
-  rows.forEach(function (r) {
-    var k = r[3]; var o = g[k] || (g[k] = { count:0, names:{}, emps:{}, states:{}, pt:0 });
-    o.count++; o.names[r[4]] = (o.names[r[4]] || 0) + 1; o.emps[r[1]] = (o.emps[r[1]] || 0) + 1;
-    if (r[0] >= 0) o.states[r[0]] = (o.states[r[0]] || 0) + 1;
-    if (r[5] != null && (DATA.lookup.empTypes[r[5]] === "Part-time" || DATA.lookup.empTypes[r[5]] === "Full-time or Part-time")) o.pt++;
-  });
-  var list = Object.keys(g).map(function (k) {
-    var o = g[k];
-    return { isco3:k, name: DATA.lookup.isco4[topKeyNum(o.names)] || ("ISCO " + k),
-             count:o.count, ptPct: o.count ? Math.round(o.pt / o.count * 100) : 0,
-             topEmp: DATA.lookup.isic[topKeyNum(o.emps)] || "—",
-             topState: o.states && topKeyNum(o.states) != null ? DATA.lookup.states[topKeyNum(o.states)] : "—" };
-  }).sort(function (a, b) { return b.count - a.count; });
-
-  var html = "<thead><tr><th>ISCO-3</th><th>Occupation group</th><th>Postings</th><th>Part-time</th><th>Top employer sector</th><th>Top state</th></tr></thead><tbody>";
-  list.forEach(function (r) {
-    html += "<tr><td><span class='chip'>" + r.isco3 + "</span></td><td>" + esc(r.name) +
-      "</td><td class='num'>" + fmt(r.count) + "</td><td class='num'>" + r.ptPct + "%</td><td>" +
-      esc(r.topEmp) + "</td><td>" + esc(r.topState) + "</td></tr>";
-  });
-  document.getElementById("role-table").innerHTML = html + "</tbody>";
-}
-
-/* -------- regional -------- */
-function renderStateTable(rows) {
-  var c = countBy(rows, 0); delete c["-1"];
-  var keys = Object.keys(c).map(Number).sort(function (a, b) { return c[b] - c[a]; });
-  var total = keys.reduce(function (s, k) { return s + c[k]; }, 0) || 1;
-  var html = "<thead><tr><th>State</th><th>Postings</th><th>Share</th></tr></thead><tbody>";
-  keys.forEach(function (i) {
-    html += "<tr><td>" + esc(DATA.lookup.states[i]) + "</td><td class='num'>" + fmt(c[i]) +
-      "</td><td class='num'>" + (c[i] / total * 100).toFixed(1) + "%</td></tr>";
-  });
-  document.getElementById("state-table").innerHTML = html + "</tbody>";
-}
-function renderMap(rows) {
-  if (!APP.map) {
-    APP.map = L.map("map", { scrollWheelZoom:false, attributionControl:false }).setView([51.1, 10.3], 5);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom:10 }).addTo(APP.map);
-    APP.mapLayer = L.layerGroup().addTo(APP.map);
-  }
-  APP.mapLayer.clearLayers();
-  var c = countBy(rows, 0); delete c["-1"];
-  var max = Math.max.apply(null, Object.keys(c).map(function (k) { return c[k]; }).concat([1]));
-  Object.keys(c).forEach(function (i) {
-    var name = DATA.lookup.states[i], ll = STATE_CENTROIDS[name]; if (!ll) return;
-    var radius = 8 + 26 * Math.sqrt(c[i] / max);
-    L.circleMarker(ll, { radius:radius, color:C.tealDeep, weight:1, fillColor:C.teal, fillOpacity:.55 })
-      .bindTooltip("<b>" + name + "</b><br>" + fmt(c[i]) + " postings", { direction:"top" })
-      .addTo(APP.mapLayer);
-  });
-  setTimeout(function () { APP.map.invalidateSize(); }, 60);
-}
-
-/* -------- explorer (uses DATA.records for human-readable detail) -------- */
-function renderExplorer() {
-  var recs = DATA.records.filter(function (r) {
-    if (APP.filterState !== "ALL" && r.state !== APP.filterState) return false;
-    if (APP.filterIsic !== "ALL" && r.isic !== APP.filterIsic) return false;
-    if (APP.filterGenuine && r.genuine === 1) return false;
-    if (APP.expQuery && (r.title + " " + r.company + " " + r.isco4nm).toLowerCase().indexOf(APP.expQuery) === -1) return false;
+/* ======= DATA HELPERS ===================================================== */
+function getRows(){
+  var si = APP.filterState!=='ALL' ? DATA.lookup.states.indexOf(APP.filterState) : -999;
+  var ii = APP.filterIsic!=='ALL'  ? DATA.lookup.isic.indexOf(APP.filterIsic)   : -999;
+  return DATA.rows.filter(function(r){
+    if (si!==-999 && r[0]!==si) return false;
+    if (ii!==-999 && r[1]!==ii) return false;
+    if (APP.filterGenuine && r[6]===1) return false;
     return true;
   });
-  var shown = recs.slice(0, APP.expLimit);
-  var html = "<thead><tr><th>Job title</th><th>Occupation</th><th>Employer sector</th><th>State</th><th></th></tr></thead><tbody>";
-  shown.forEach(function (r) {
-    html += "<tr><td>" + esc(clip(r.title, 60)) + "<div class='muted' style='font-size:11.5px'>" + esc(r.company) + "</div></td><td>" +
-      esc(r.isco4nm) + "</td><td>" + esc(r.isic) + "</td><td>" + esc(r.state || "—") + "</td><td>" +
-      (r.url ? "<a href='" + esc(r.url) + "' target='_blank' rel='noopener'>view &rarr;</a>" : "") + "</td></tr>";
-  });
-  document.getElementById("exp-table").innerHTML = html + "</tbody>";
-  document.getElementById("exp-more").style.display = recs.length > APP.expLimit ? "" : "none";
+}
+function applyFilters(){
+  APP.filterState   = document.getElementById('flt-state').value;
+  APP.filterIsic    = document.getElementById('flt-isic').value;
+  APP.filterGenuine = document.getElementById('flt-genuine').checked;
+  EXP_PAGE = 0;
+  renderAll();
 }
 
-/* -------- helpers -------- */
-function topKeyNum(obj) { var best = null, n = -1; for (var k in obj) if (obj[k] > n) { n = obj[k]; best = +k; } return best; }
-function clip(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
-function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (m) { return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]; }); }
-function showStatus(html) { var el = document.getElementById("db-status"); el.className = "db-status"; el.innerHTML = html; el.hidden = false; }
-function fail(html) { var el = document.getElementById("db-status"); el.className = "db-status is-error"; el.innerHTML = html; el.hidden = false; }
-function hideStatus() { document.getElementById("db-status").hidden = true; }
-function showTab_export() {}
+/* ======= TAB SWITCHING ==================================================== */
+function showTab(id, btn){
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  var panel = document.getElementById('tab-'+id);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+  APP.activeTab = id;
+  var rows = getRows();
+  if (id==='roles')      renderRoleTab(rows, APP.activeRole);
+  if (id==='regional'){  renderStateBar(rows); renderStateTable(rows); initMap(); }
+  if (id==='explorer')   renderExplorer();
+}
+
+/* ======= RENDER ALL ======================================================= */
+function renderAll(){
+  var rows = getRows();
+  document.getElementById('filter-count').textContent = fmt(rows.length) + ' postings';
+  updateKPIs(rows); renderAlert(rows);
+  renderTop10(rows); renderCrossTab(rows);
+  renderTrend(rows); renderIsicBar(rows);
+  if (APP.activeTab==='roles')      renderRoleTab(rows, APP.activeRole);
+  if (APP.activeTab==='regional'){  renderStateBar(rows); renderStateTable(rows); }
+  if (APP.activeTab==='explorer')   renderExplorer();
+}
+
+/* ======= KPIs ============================================================= */
+function kpi(id,val,lbl,sub){
+  var el=document.getElementById(id);
+  if(el) el.innerHTML='<span class="kpi-val">'+val+'</span><span class="kpi-lbl">'+lbl+'</span><span class="kpi-sub">'+sub+'</span>';
+}
+function updateKPIs(rows){
+  var total = rows.length;
+  var lead  = DATA.roleGroups[0];
+  var leadN = lead ? rows.filter(function(r){ return r[3]===lead.code; }).length : 0;
+  var pt    = rows.filter(function(r){ return PT_IDX[r[5]]; }).length;
+  var stc={}; rows.forEach(function(r){ if(r[0]>=0){ var s=DATA.lookup.states[r[0]]; stc[s]=(stc[s]||0)+1; } });
+  var top3 = Object.keys(stc).map(function(k){return [k,stc[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
+  var top3n = top3.reduce(function(s,e){return s+e[1];},0);
+  var top3p = total>0 ? Math.round(top3n/total*100) : 0;
+  var topSt = top3[0] ? top3[0][0] : 'N/A';
+  var wk = DATA.meta.weeks || 1;
+  kpi('kpi-total', fmt(total), 'In-scope '+APP.sector.label+' Vacancies', 'Approx. '+fmt(Math.round(total/Math.max(wk,1)))+' new postings per week');
+  kpi('kpi-lead', pct(leadN,total)+'%', (lead? shortName(lead.name):'Lead')+' Roles', fmt(leadN)+' postings — largest role group');
+  kpi('kpi-parttime', pct(pt,total)+'%', 'Open to Part-time', 'Accept flexible or part-time arrangements');
+  kpi('kpi-geo', top3p+'%', 'Demand in Top 3 States', 'Led by '+topSt+': geographic concentration of demand');
+}
+function shortName(n){ return n.length>22 ? n.slice(0,20)+'…' : n; }
+
+function renderAlert(rows){
+  var total=rows.length, ic={}, isicc={};
+  rows.forEach(function(r){ var l=DATA.lookup.isco4[r[4]]; if(l&&l!=='Other') ic[l]=(ic[l]||0)+1; });
+  rows.forEach(function(r){ if(r[1]>=0){ var c=DATA.lookup.isic[r[1]]; isicc[c]=(isicc[c]||0)+1; } });
+  var tr = topKeyOf(ic)||'N/A', te = topKeyOf(isicc)||'N/A';
+  var el=document.getElementById('ov-alert');
+  if(el) el.innerHTML='<b>Key finding:</b> Germany\'s '+esc(APP.sector.label.toLowerCase())+
+    ' sector posted <b>'+fmt(total)+' in-scope vacancies</b> over the '+esc(DATA.meta.dateRange||'collection')+' window. '+
+    'Most-advertised occupation: <b>'+esc(tr)+'</b>. Largest hiring sector: <b>'+esc(te)+'</b>. '+
+    'All figures reflect the current header filters (state, employer type, genuine employers).';
+}
+function topKeyOf(o){ var b=null,n=-1; for(var k in o) if(o[k]>n){n=o[k];b=k;} return b; }
+
+/* ======= TOP 10 =========================================================== */
+function renderTop10(rows){
+  var total=rows.length, c={};
+  rows.forEach(function(r){ var l=DATA.lookup.isco4[r[4]]; if(l&&l!=='Other') c[l]=(c[l]||0)+1; });
+  var s=Object.keys(c).map(function(k){return [k,c[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,10).reverse();
+  Plotly.react('chart-top10',[{type:'bar',orientation:'h',
+    y:s.map(function(d){return d[0];}), x:s.map(function(d){return +(d[1]/Math.max(total,1)*100).toFixed(1);}),
+    marker:{color:C.teal,line:{width:0}},
+    text:s.map(function(d){return (d[1]/Math.max(total,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}% of demand<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:52,t:12,b:8}}),pc);
+}
+
+/* ======= EMPLOYER BAR ===================================================== */
+function renderIsicBar(rows){
+  var total=rows.length, c={};
+  rows.forEach(function(r){ if(r[1]>=0){ var cat=DATA.lookup.isic[r[1]]; c[cat]=(c[cat]||0)+1; } });
+  var s=Object.keys(c).map(function(k){return [k,c[k]];}).sort(function(a,b){return a[1]-b[1];});
+  Plotly.react('chart-isic',[{type:'bar',orientation:'h',
+    y:s.map(function(d){return d[0];}), x:s.map(function(d){return +(d[1]/Math.max(total,1)*100).toFixed(1);}),
+    marker:{color:s.map(function(d){return isicColor(d[0]);}),line:{width:0}},
+    text:s.map(function(d){return (d[1]/Math.max(total,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}%<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:52,t:12,b:8}}),pc);
+}
+
+/* ======= CROSS-TAB ======================================================== */
+function renderCrossTab(rows){
+  var grps = DATA.roleGroups.map(function(g){ return { code:g.code, name:wrapName(g.name) }; });
+  var isicList = DATA.lookup.isic.slice(0,8);
+  var matrix={}, totals={};
+  grps.forEach(function(g){ totals[g.code]=0; });
+  rows.forEach(function(r){
+    if(r[1]<0) return;
+    var g=grps.find(function(x){return x.code===r[3];}); if(!g) return;
+    var isic=DATA.lookup.isic[r[1]];
+    if(!matrix[isic]) matrix[isic]={};
+    matrix[isic][g.code]=(matrix[isic][g.code]||0)+1;
+    totals[g.code]=(totals[g.code]||0)+1;
+  });
+  var zData=isicList.map(function(isic){ return grps.map(function(g){
+    return +(((matrix[isic]?matrix[isic][g.code]||0:0)/Math.max(totals[g.code],1))*100).toFixed(1); }); });
+  var textData=isicList.map(function(isic){ return grps.map(function(g){
+    return (((matrix[isic]?matrix[isic][g.code]||0:0)/Math.max(totals[g.code],1))*100).toFixed(0)+'%'; }); });
+  var zMax=Math.max.apply(null, zData.reduce(function(a,b){return a.concat(b);},[]).concat([1]));
+  var annotations=[];
+  isicList.forEach(function(isic,yi){ grps.forEach(function(g,xi){
+    var v=zData[yi][xi]; var txtCol = v/zMax>0.45 ? '#fff' : '#0F2E2E';
+    annotations.push({x:g.name,y:isic,text:textData[yi][xi],xref:'x',yref:'y',showarrow:false,
+      font:{size:10,color:txtCol,family:'Outfit'}});
+  }); });
+  Plotly.react('chart-cross',[{type:'heatmap',
+    x:grps.map(function(g){return g.name;}), y:isicList, z:zData,
+    colorscale:[[0,'#EAF4F4'],[0.3,'#4DB8B8'],[0.65,'#1A7B7A'],[1,'#0A3D3D']],
+    showscale:true,
+    colorbar:{thickness:10,len:0.85,tickfont:{size:9,family:'Outfit'},ticksuffix:'%',outlinewidth:0},
+    hovertemplate:'<b>%{y}</b><br>%{x}: %{z:.1f}%<extra></extra>', xgap:4, ygap:4}],
+    Object.assign({},base,{xaxis:{showgrid:false,tickfont:{size:9},fixedrange:true,tickangle:0},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      annotations:annotations, margin:{l:8,r:60,t:16,b:36}}),pc);
+}
+function wrapName(n){
+  var w=n.split(' '); if(w.length<2) return n;
+  var mid=Math.ceil(w.length/2);
+  return w.slice(0,mid).join(' ')+'<br>'+w.slice(mid).join(' ');
+}
+
+/* ======= TREND CHART ====================================================== */
+function renderTrend(rows){
+  var wl=DATA.lookup.weekLabels;
+  if(!wl.length){ Plotly.react('chart-trend',[],Object.assign({},base)); return; }
+  /* top ISCO-2 groups present (up to 5) */
+  var c2={}; rows.forEach(function(r){ if(r[2]>0) c2[r[2]]=(c2[r[2]]||0)+1; });
+  var groups=Object.keys(c2).map(function(k){return parseInt(k,10);})
+    .sort(function(a,b){return c2[b]-c2[a];}).slice(0,5);
+  var traces=groups.map(function(i2,gi){
+    var y=Array(wl.length).fill(0);
+    rows.forEach(function(r){ if(r[2]===i2 && r[7]>=0) y[r[7]]++; });
+    var nm=(ISCO2_NAMES[i2]||('ISCO '+i2))+' ('+i2+')';
+    var col=TREND_COLS[gi%TREND_COLS.length];
+    return {x:wl,y:y,type:'scatter',mode:'lines+markers',name:nm,
+      line:{color:col,width:2.5,shape:'spline'},marker:{color:col,size:5},
+      fill:'tozeroy',fillcolor:col+'18',
+      hovertemplate:'<b>%{x}</b><br>'+nm+': %{y:,d}<extra></extra>'};
+  });
+  Plotly.react('chart-trend',traces,Object.assign({},base,{
+    xaxis:{showgrid:false,tickfont:{size:10},fixedrange:true},
+    yaxis:{showgrid:true,gridcolor:C.border,title:{text:'Postings',font:{size:10}},tickfont:{size:10},fixedrange:true},
+    legend:{orientation:'h',y:-0.32,font:{size:9},bgcolor:'rgba(0,0,0,0)'},
+    margin:{l:44,r:8,t:12,b:84}}),pc);
+}
+
+/* ======= ROLE TAB (dynamic) =============================================== */
+function buildRoleTab(){
+  var nav=document.getElementById('role-sub-nav');
+  var wrap=document.getElementById('role-panels');
+  nav.innerHTML=''; wrap.innerHTML='';
+  DATA.roleGroups.forEach(function(g,i){
+    var b=document.createElement('button');
+    b.className='sub-btn'+(i===0?' active':'');
+    b.textContent=g.name+' ('+g.code+')';
+    b.onclick=function(){ showRole(g.code,b); };
+    nav.appendChild(b);
+
+    var p=document.createElement('div');
+    p.className='sub-panel'+(i===0?' active':'');
+    p.id='role-panel-'+g.code;
+    p.innerHTML=
+      '<div class="insight-box" id="role-insight-'+g.code+'"></div>'+
+      '<div class="kpi-row">'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="rk1-'+g.code+'"></div></div>'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:#2D9B9A"></div><div class="kpi-body" id="rk2-'+g.code+'"></div></div>'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:#D4940A"></div><div class="kpi-body" id="rk3-'+g.code+'"></div></div>'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="rk4-'+g.code+'"></div></div>'+
+      '</div>'+
+      '<div class="grid-2" style="grid-template-columns:3fr 2fr">'+
+        '<div class="card card-t"><div class="card-head">Top Occupation Types (ISCO-4)</div>'+
+          '<div class="card-sub">Standardised ISCO-4 categories most in demand, as a % of postings in this group</div>'+
+          '<div class="card-body"><div id="rc-top-'+g.code+'" style="height:300px"></div></div></div>'+
+        '<div class="card card-g"><div class="card-head">Contract Type</div>'+
+          '<div class="card-sub">Distribution of employment arrangements</div>'+
+          '<div class="card-body"><div id="rc-emp-'+g.code+'" style="height:140px"></div></div>'+
+          '<div class="card-head" style="margin-top:4px">Hiring Employer Sectors</div>'+
+          '<div class="card-sub">Which sectors advertise for this group</div>'+
+          '<div class="card-body"><div id="rc-isic-'+g.code+'" style="height:140px"></div></div></div>'+
+      '</div>'+
+      '<div class="card card-b"><div class="card-head">Top Hiring Companies</div>'+
+        '<div class="card-sub">Employers with the most openings (all states). Colour indicates employer sector.</div>'+
+        '<div class="card-body"><div id="rc-cos-'+g.code+'" style="height:330px"></div></div></div>'+
+      '<div class="card card-g" style="margin-top:14px"><div class="card-head">Top 3 Employers by Sector</div>'+
+        '<div class="card-sub">Leading hiring organisations within each employer sector for this role group</div>'+
+        '<div class="tbl-wrap" id="rc-empbysec-'+g.code+'"></div></div>';
+    wrap.appendChild(p);
+  });
+  APP.activeRole = DATA.roleGroups.length ? DATA.roleGroups[0].code : null;
+}
+
+function showRole(code, btn){
+  document.querySelectorAll('#tab-roles .sub-btn').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelectorAll('#tab-roles .sub-panel').forEach(function(p){ p.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var p=document.getElementById('role-panel-'+code); if(p) p.classList.add('active');
+  APP.activeRole=code;
+  renderRoleTab(getRows(), code);
+}
+
+function renderRoleTab(rows, code){
+  if(code==null) return;
+  var g = DATA.roleGroups.find(function(x){return x.code===code;}); if(!g) return;
+  var sub=rows.filter(function(r){return r[3]===code;}), tot=sub.length, allTot=rows.length;
+  var meta=(typeof ROLE_META!=='undefined' && ROLE_META[code]) ? ROLE_META[code] : null;
+
+  var el=document.getElementById('role-insight-'+code);
+  if(el) el.innerHTML='<b>'+esc(g.name)+'</b> — <b>'+fmt(tot)+' postings</b> ('+pct(tot,allTot)+'% of all '+
+    esc(APP.sector.label.toLowerCase())+' demand). '+(meta?meta.desc:'');
+
+  var pt=sub.filter(function(r){return PT_IDX[r[5]];}).length;
+  var isicc={}; sub.forEach(function(r){ if(r[1]>=0){ var c=DATA.lookup.isic[r[1]]; isicc[c]=(isicc[c]||0)+1; } });
+  var topEmp=topKeyOf(isicc)||'N/A';
+  var stc={}; sub.forEach(function(r){ if(r[0]>=0){ var s=DATA.lookup.states[r[0]]; stc[s]=(stc[s]||0)+1; } });
+  var topSt=topKeyOf(stc)||'N/A';
+  kpi('rk1-'+code, pct(tot,allTot)+'%','Share of Sector Demand', fmt(tot)+' of '+fmt(allTot)+' total postings');
+  kpi('rk2-'+code, pct(pt,tot)+'%','Open to Part-time','Flexible or part-time arrangements accepted');
+  kpi('rk3-'+code, topEmp.length>28?topEmp.slice(0,26)+'…':topEmp,'Top Employer Sector','Largest hiring sector for this group');
+  kpi('rk4-'+code, topSt,'Top State','Highest posting volume state for this group');
+
+  /* Top ISCO-4 */
+  var ic4={}; sub.forEach(function(r){ var l=DATA.lookup.isco4[r[4]]; if(l&&l!=='Other') ic4[l]=(ic4[l]||0)+1; });
+  var s4=Object.keys(ic4).map(function(k){return [k,ic4[k]];}).sort(function(a,b){return b[1]-a[1];})
+    .slice(0,10).filter(function(d){return +(d[1]/Math.max(tot,1)*100).toFixed(1)>0;}).reverse();
+  Plotly.react('rc-top-'+code,[{type:'bar',orientation:'h',
+    y:s4.map(function(d){return d[0];}), x:s4.map(function(d){return +(d[1]/Math.max(tot,1)*100).toFixed(1);}),
+    marker:{color:g.color,line:{width:0}},
+    text:s4.map(function(d){return (d[1]/Math.max(tot,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}%<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:52,t:12,b:8}}),pc);
+
+  /* Contract type */
+  var ec={}; sub.forEach(function(r){ ec[r[5]]=(ec[r[5]]||0)+1; });
+  var ev=DATA.lookup.empTypes.map(function(l,i){ return {label:l,count:ec[i]||0,col:C.emp[i%C.emp.length]}; })
+    .filter(function(d){return d.count>0;}).sort(function(a,b){return a.count-b.count;});
+  Plotly.react('rc-emp-'+code,[{type:'bar',orientation:'h',
+    y:ev.map(function(d){return d.label;}), x:ev.map(function(d){return +(d.count/Math.max(tot,1)*100).toFixed(1);}),
+    marker:{color:ev.map(function(d){return d.col;}),line:{width:0}},
+    text:ev.map(function(d){return (d.count/Math.max(tot,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}%<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.35,margin:{l:8,r:52,t:12,b:8}}),pc);
+
+  /* Employer sectors */
+  var se=Object.keys(isicc).map(function(k){return [k,isicc[k]];}).sort(function(a,b){return a[1]-b[1];});
+  Plotly.react('rc-isic-'+code,[{type:'bar',orientation:'h',
+    y:se.map(function(d){return d[0];}), x:se.map(function(d){return +(d[1]/Math.max(tot,1)*100).toFixed(1);}),
+    marker:{color:se.map(function(d){return isicColor(d[0]);}),line:{width:0}},
+    text:se.map(function(d){return (d[1]/Math.max(tot,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}%<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:52,t:12,b:8}}),pc);
+
+  /* Top companies (pre-computed) */
+  var cos=(DATA.companies[String(code)]||[]).slice(0,15).sort(function(a,b){return a.count-b.count;});
+  if(cos.length) Plotly.react('rc-cos-'+code,[{type:'bar',orientation:'h',
+    y:cos.map(function(d){return d.name;}), x:cos.map(function(d){return d.count;}),
+    marker:{color:cos.map(function(d){return isicColor(d.isic);}),line:{width:0}},
+    text:cos.map(function(d){return fmt(d.count);}),textposition:'outside',
+    textfont:{size:9,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:,d} postings<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:9},fixedrange:true},
+      bargap:0.28,margin:{l:8,r:52,t:12,b:8}}),pc);
+  else document.getElementById('rc-cos-'+code).innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No company-level data available.</p>';
+
+  renderEmployersBySector(code);
+}
+
+function renderEmployersBySector(code){
+  var el=document.getElementById('rc-empbysec-'+code); if(!el) return;
+  var bySector=(DATA.sectorEmployers && DATA.sectorEmployers[String(code)]) || {};
+  var sectors=Object.keys(bySector).filter(function(s){ return bySector[s]&&bySector[s].length>0; })
+    .sort(function(a,b){
+      var sa=bySector[a].reduce(function(x,e){return x+e.count;},0);
+      var sb=bySector[b].reduce(function(x,e){return x+e.count;},0);
+      return sb-sa;
+    });
+  if(!sectors.length){ el.innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No employer data available.</p>'; return; }
+  var html='<table class="data-tbl"><thead><tr>'+
+    '<th style="width:36%">Employer Sector</th><th style="width:28px;text-align:center">#</th>'+
+    '<th>Employer</th><th style="text-align:right">Postings</th></tr></thead><tbody>';
+  sectors.forEach(function(sector){
+    var emps=(bySector[sector]||[]).slice(0,3), col=isicColor(sector);
+    emps.forEach(function(e,i){
+      html+='<tr>';
+      if(i===0) html+='<td rowspan="'+emps.length+'" style="font-weight:600;color:'+col+';vertical-align:middle;border-left:3px solid '+col+'">'+esc(sector)+'</td>';
+      html+='<td style="color:#7A9C9C;font-size:10px;text-align:center">'+(i+1)+'</td>'+
+        '<td>'+esc(e.name)+'</td><td class="cnt" style="text-align:right">'+fmt(e.count)+'</td></tr>';
+    });
+  });
+  el.innerHTML=html+'</tbody></table>';
+}
+
+/* ======= MAP ============================================================== */
+var geoJSON=null;
+function initMap(){
+  if(APP.mapInit) return; APP.mapInit=true;
+  if(!APP.region || !APP.region.geojson){ document.getElementById('geo-insight').textContent='No map configured for this region.'; return; }
+  fetch(APP.region.geojson).then(function(r){return r.json();})
+    .then(function(d){ geoJSON=d; renderMap(); })
+    .catch(function(){ document.getElementById('geo-insight').textContent='Map unavailable offline. Use the bar chart and table below.'; });
+}
+function renderMap(){
+  if(!geoJSON) return;
+  if(APP.leafletMap){ APP.leafletMap.remove(); APP.leafletMap=null; }
+  var reg=APP.region, nameMap=reg.nameMap||{};
+  APP.leafletMap=L.map('geo-map',{zoomControl:false}).setView(reg.center||[51.2,10.4], reg.zoom||5);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    {attribution:'&copy; CartoDB',opacity:0.55}).addTo(APP.leafletMap);
+  var geo=DATA.stateGeo;
+  var maxHC=Math.max.apply(null, Object.keys(geo).map(function(k){return geo[k].hc;}).concat([1]));
+  function getCol(hc){ var t=hc/maxHC;
+    return 'rgb('+Math.round(229-t*214)+','+Math.round(242-t*151)+','+Math.round(242-t*152)+')'; }
+  L.geoJSON(geoJSON,{
+    style:function(f){ var en=nameMap[f.properties.name], d=en&&geo[en];
+      return {fillColor:d?getCol(d.hc):'#F0F4F4',fillOpacity:0.85,color:'white',weight:1.5}; },
+    onEachFeature:function(f,layer){
+      var en=nameMap[f.properties.name], d=en&&geo[en];
+      if(d){
+        var rh=d.topRoles.map(function(r,i){return '<div style="margin-bottom:2px">'+(i+1)+'. '+esc(r)+'</div>';}).join('');
+        layer.bindTooltip(
+          '<div style="font-family:Outfit,sans-serif;min-width:210px">'+
+          '<div style="font-size:14px;font-weight:700;color:#0F5B5A;border-bottom:2px solid #D4940A;padding-bottom:5px;margin-bottom:8px">'+esc(en)+'</div>'+
+          '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:#3D6060">Vacancies</span><b style="color:#1A7B7A;font-size:15px">'+d.hc.toLocaleString('en-US')+'</b></div>'+
+          '<div style="font-size:9px;font-weight:700;color:#7A9C9C;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Top Roles</div>'+rh+
+          '<div style="font-size:9px;font-weight:700;color:#7A9C9C;text-transform:uppercase;margin:8px 0 3px">Top Employer Sector</div>'+
+          '<div style="color:#D4940A;font-weight:600">'+esc(d.topEmp)+'</div></div>',
+          {sticky:false,direction:'auto'});
+        layer.on('mouseover',function(){ this.setStyle({weight:3,color:'#D4940A',fillOpacity:0.95}); });
+        layer.on('mouseout', function(){ this.setStyle({weight:1.5,color:'white',fillOpacity:0.85}); });
+      }
+    }
+  }).addTo(APP.leafletMap);
+  var leg=L.control({position:'bottomright'});
+  leg.onAdd=function(){ var d=L.DomUtil.create('div');
+    d.style.cssText='background:white;padding:10px 14px;border-radius:8px;font-family:Outfit,sans-serif;font-size:11px;border:1px solid #D4E5E5;box-shadow:0 2px 8px rgba(15,46,46,.1)';
+    d.innerHTML='<b style="color:#0F2E2E">Vacancies</b><br><div style="display:flex;align-items:center;gap:6px;margin-top:6px"><div style="width:80px;height:12px;background:linear-gradient(to right,#E5F2F2,#0F5B5A);border-radius:2px"></div></div><div style="display:flex;justify-content:space-between;width:80px;font-size:9px;color:#7A9C9C;margin-top:2px"><span>Low</span><span>High</span></div>';
+    return d; };
+  leg.addTo(APP.leafletMap);
+  var el=document.getElementById('geo-insight');
+  var tot=Object.keys(geo).reduce(function(s,k){return s+geo[k].hc;},0);
+  var top=Object.keys(geo).map(function(k){return [k,geo[k].hc];}).sort(function(a,b){return b[1]-a[1];})[0];
+  if(el&&top) el.innerHTML='<b>Geographic coverage:</b> '+fmt(tot)+' postings have state-level location data across '+
+    Object.keys(geo).length+' '+(reg.unit||'regions')+'. <b>Hover each state</b> to view top roles and leading employer sector. Leading state: <b>'+esc(top[0])+'</b> with '+fmt(top[1])+' openings.';
+}
+
+/* ======= STATE BAR & TABLE ================================================ */
+function renderStateBar(rows){
+  var c={}; rows.forEach(function(r){ if(r[0]>=0){ var s=DATA.lookup.states[r[0]]; c[s]=(c[s]||0)+1; } });
+  var tot=rows.length;
+  var s=Object.keys(c).map(function(k){return [k,c[k]];}).sort(function(a,b){return a[1]-b[1];});
+  Plotly.react('chart-states',[{type:'bar',orientation:'h',
+    y:s.map(function(d){return d[0];}), x:s.map(function(d){return +(d[1]/Math.max(tot,1)*100).toFixed(1);}),
+    marker:{color:C.teal,line:{width:0}},
+    text:s.map(function(d){return (d[1]/Math.max(tot,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}% of postings<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:10},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:52,t:12,b:8}}),pc);
+}
+function renderStateTable(rows){
+  var sc={}, si2={};
+  rows.forEach(function(r){
+    if(r[0]<0) return;
+    var s=DATA.lookup.states[r[0]]; sc[s]=(sc[s]||0)+1;
+    if(r[1]>=0){ if(!si2[s]) si2[s]={}; var ic=DATA.lookup.isic[r[1]]; si2[s][ic]=(si2[s][ic]||0)+1; }
+  });
+  var tot=rows.length, sorted=Object.keys(sc).map(function(k){return [k,sc[k]];}).sort(function(a,b){return b[1]-a[1];});
+  var html='<table class="data-tbl"><thead><tr><th>State</th><th>Postings</th><th>% of Total</th><th>Top Employer Sector</th></tr></thead><tbody>';
+  sorted.forEach(function(pair){
+    var s=pair[0], n=pair[1];
+    var te=si2[s]?topKeyOf(si2[s]):'N/A';
+    html+='<tr><td><b>'+esc(s)+'</b></td><td class="cnt">'+fmt(n)+'</td><td>'+pct(n,tot)+'%</td><td>'+esc(te)+'</td></tr>';
+  });
+  document.getElementById('state-table').innerHTML=html+'</tbody></table>';
+}
+
+/* ======= DATA EXPLORER ==================================================== */
+var EXP_PAGE=0, EXP_SEARCH='', EXP_PS=50, _rowToIdx=null;
+
+function renderExplorer(){
+  var html='<table class="data-tbl"><thead><tr><th>Role Group (ISCO-3)</th><th>Code</th><th>Total Postings</th><th>% Open to Part-time</th><th>Top Employer Sector</th><th>Top State</th></tr></thead><tbody>';
+  DATA.roleTable.forEach(function(r){
+    var hi=parseFloat(r.ptPct)>60;
+    html+='<tr><td><b>'+esc(r.name)+'</b></td><td><span class="badge">'+r.isco3+'</span></td><td class="cnt">'+fmt(r.count)+'</td><td class="'+(hi?'gld':'')+'">'+r.ptPct+'%</td><td>'+esc(r.topEmp)+'</td><td>'+esc(r.topState)+'</td></tr>';
+  });
+  document.getElementById('explorer-table').innerHTML=html+'</tbody></table>';
+  renderFullTable();
+}
+function explorerSearch(){ EXP_SEARCH=document.getElementById('exp-search').value.toLowerCase(); EXP_PAGE=0; renderFullTable(); }
+
+function renderFullTable(){
+  if(!_rowToIdx){ _rowToIdx=new Map(); DATA.rows.forEach(function(r,i){ _rowToIdx.set(r,i); }); }
+  var rows=getRows();
+  var R=DATA.raw;
+  var decoded=rows.map(function(r){
+    var i=_rowToIdx.get(r);
+    return {
+      title:R.title[i]||'', date:R.date[i]||'', company:R.company[i]||'',
+      empCat:R.empCat[i]||'', salary:R.salary[i]||'', desc:R.desc[i]||'',
+      req:R.req[i]||'', benefits:R.benefits[i]||'', workType:R.workType[i]||'', url:R.url[i]||'',
+      state:r[0]>=0?DATA.lookup.states[r[0]]:'',
+      isic:r[1]>=0?DATA.lookup.isic[r[1]]:'',
+      grp:(typeof ISCO3_NAMES!=='undefined'&&ISCO3_NAMES[r[3]])||(r[3]?'ISCO '+r[3]:''),
+      occ:(r[4]>=0?DATA.lookup.isco4[r[4]]:null)||'Other',
+      empType:DATA.lookup.empTypes[r[5]]||''
+    };
+  });
+  if(EXP_SEARCH){
+    var q=EXP_SEARCH;
+    decoded=decoded.filter(function(d){
+      return d.title.toLowerCase().indexOf(q)>=0 || d.state.toLowerCase().indexOf(q)>=0 ||
+        d.grp.toLowerCase().indexOf(q)>=0 || d.occ.toLowerCase().indexOf(q)>=0 ||
+        d.company.toLowerCase().indexOf(q)>=0 || d.isic.toLowerCase().indexOf(q)>=0 ||
+        d.desc.toLowerCase().indexOf(q)>=0 || d.empCat.toLowerCase().indexOf(q)>=0;
+    });
+  }
+  var total=decoded.length, totalPages=Math.max(1,Math.ceil(total/EXP_PS));
+  EXP_PAGE=Math.min(EXP_PAGE,totalPages-1);
+  var page=decoded.slice(EXP_PAGE*EXP_PS,(EXP_PAGE+1)*EXP_PS);
+
+  var html='<table class="data-tbl" style="min-width:1800px"><thead><tr>'+
+    '<th style="min-width:30px">#</th><th style="min-width:200px">Job Title</th>'+
+    '<th style="min-width:90px">Date Posted</th><th style="min-width:140px">Company</th>'+
+    '<th style="min-width:130px">State</th><th style="min-width:160px">Occupation (ISCO-4)</th>'+
+    '<th style="min-width:170px">Role Group (ISCO-3)</th><th style="min-width:150px">Employer Sector</th>'+
+    '<th style="min-width:140px">Employer Category</th><th style="min-width:130px">Contract Type</th>'+
+    '<th style="min-width:80px">Salary</th><th style="min-width:80px">Work Type</th>'+
+    '<th style="min-width:300px">Description</th><th style="min-width:220px">Requirements</th>'+
+    '<th style="min-width:200px">Benefits</th><th style="min-width:60px">URL</th></tr></thead><tbody>';
+  page.forEach(function(d,i){
+    var rowNum=EXP_PAGE*EXP_PS+i+1;
+    html+='<tr>'+
+      '<td style="color:#7A9C9C;font-size:10px;white-space:nowrap">'+rowNum+'</td>'+
+      '<td><b style="font-size:11px;color:#0F2E2E">'+esc(d.title)+'</b></td>'+
+      '<td style="white-space:nowrap;font-size:10px">'+esc(d.date)+'</td>'+
+      '<td style="font-size:10px">'+esc(d.company)+'</td>'+
+      '<td style="font-size:10px"><b>'+esc(d.state)+'</b></td>'+
+      '<td style="color:#1A7B7A;font-size:10px">'+esc(d.occ)+'</td>'+
+      '<td style="font-size:10px">'+esc(d.grp)+'</td>'+
+      '<td style="font-size:10px">'+esc(d.isic)+'</td>'+
+      '<td style="font-size:10px;color:#7A9C9C">'+esc(d.empCat)+'</td>'+
+      '<td style="font-size:10px;white-space:nowrap">'+esc(d.empType)+'</td>'+
+      '<td style="font-size:10px;color:#D4940A">'+esc(d.salary)+'</td>'+
+      '<td style="font-size:10px;white-space:nowrap">'+esc(d.workType)+'</td>'+
+      '<td class="desc-cell">'+esc(d.desc)+'</td>'+
+      '<td class="desc-cell">'+esc(d.req)+'</td>'+
+      '<td class="desc-cell">'+esc(d.benefits)+'</td>'+
+      '<td class="link-cell">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">View</a>':'')+'</td>'+
+      '</tr>';
+  });
+  document.getElementById('explorer-full').innerHTML=html+'</tbody></table>';
+
+  var navEl=document.getElementById('explorer-nav');
+  var btnOn='padding:5px 12px;border:1px solid #D4E5E5;border-radius:6px;background:#fff;font-family:Outfit,sans-serif;font-size:11px;cursor:pointer;color:#1A7B7A;font-weight:600';
+  var btnOff='padding:5px 12px;border:1px solid #D4E5E5;border-radius:6px;background:#F2F6F6;font-family:Outfit,sans-serif;font-size:11px;cursor:default;color:#B0C8C8';
+  window._expTotalPages=totalPages;
+  navEl.innerHTML=
+    '<button style="'+(EXP_PAGE===0?btnOff:btnOn)+'" '+(EXP_PAGE===0?'disabled':'')+' onclick="EXP_PAGE=Math.max(0,EXP_PAGE-1);renderFullTable()">Prev</button>'+
+    '<span style="color:#3D6060">Page <b>'+(EXP_PAGE+1)+'</b> of <b>'+totalPages+'</b> · <b>'+fmt(total)+'</b> matching postings</span>'+
+    '<button style="'+(EXP_PAGE>=totalPages-1?btnOff:btnOn)+'" '+(EXP_PAGE>=totalPages-1?'disabled':'')+' onclick="EXP_PAGE=Math.min(window._expTotalPages-1,EXP_PAGE+1);renderFullTable()">Next</button>';
+}
+
+/* ======= STATIC (per-sector) TABS ======================================== */
+function buildStaticTabs(){
+  var tabs=(APP.sector.staticTabs||[]);
+  if(!tabs.length) return;
+  var nav=document.getElementById('tab-nav');
+  var mount=document.getElementById('static-tabs');
+  tabs.forEach(function(t){
+    var btn=document.createElement('button');
+    btn.className='tab-btn'; btn.textContent=t.label;
+    btn.onclick=function(){ showTab(t.id,btn); };
+    nav.appendChild(btn);
+
+    var sec=document.createElement('section');
+    sec.id='tab-'+t.id; sec.className='tab-panel';
+    sec.innerHTML='<div class="insight-box">Loading…</div>';
+    mount.appendChild(sec);
+
+    fetch(t.file).then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function(html){ sec.innerHTML=html; })
+      .catch(function(){ sec.innerHTML='<div class="alert-box">Could not load <code>'+esc(t.file)+'</code>. If testing locally, serve over http.</div>'; });
+  });
+}
+
+/* Sub-tab switcher used by injected Qualifications content (onclick="showQualsRole(...)"). */
+function showQualsRole(code, btn){
+  var scope=document.getElementById('tab-quals'); if(!scope) return;
+  scope.querySelectorAll('.sub-btn').forEach(function(b){ b.classList.remove('active'); });
+  scope.querySelectorAll('.sub-panel').forEach(function(p){ p.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var p=document.getElementById('qpanel-'+code); if(p) p.classList.add('active');
+}
