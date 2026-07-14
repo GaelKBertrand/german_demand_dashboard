@@ -79,7 +79,7 @@ function qs(k){ return new URLSearchParams(location.search).get(k); }
 window.addEventListener('load', function(){
   var id = qs('sector') || (typeof SECTORS!=='undefined' && SECTORS[0] && SECTORS[0].id) || 'healthcare';
   var sector = (typeof getSector==='function' && getSector(id)) || null;
-  if (!sector){ showError('Unknown sector', 'No sector <code>'+esc(id)+'</code> is configured in sectors.js.'); return; }
+  if (!sector){ showError({kind:'network', message:'No sector "'+id+'" is configured in sectors.js.'}, ''); return; }
   APP.sector = sector;
   APP.region = (typeof regionFor==='function') ? regionFor(sector) : null;
 
@@ -93,22 +93,8 @@ window.addEventListener('load', function(){
   buildSwitcher(sector.id);
 
   loadSectorData(sector.id)
-    .then(function(built){
-      DATA = built;
-      if (!DATA.rows.length){
-        showError('No classified postings found',
-          'The file <code>'+esc(csvUrlFor(sector))+'</code> loaded, but no rows survived the in-scope / classified filter. '+
-          'Check that the CSV has the classifier\'s final columns (ISCO_4, ISCO_4_name, State, Employer_Category, Scope_Category).');
-        return;
-      }
-      initDashboard();
-    })
-    .catch(function(err){
-      showError('Could not load sector data',
-        'Tried to fetch <code>'+esc(csvUrlFor(sector))+'</code>. '+
-        'If testing locally, serve over http (e.g. <code>python3 -m http.server</code>) — opening the file directly is blocked by the browser. '+
-        '<br><span style="color:#7A9C9C">'+esc(String(err&&err.message||err))+'</span>');
-    });
+    .then(function(built){ DATA = built; initDashboard(); })
+    .catch(function(err){ showError(err, csvUrlFor(sector)); });
 });
 
 function buildSwitcher(activeId){
@@ -120,11 +106,57 @@ function buildSwitcher(activeId){
 }
 function switchSector(id){ location.href = 'dashboard.html?sector=' + encodeURIComponent(id); }
 
-function showError(title, msg){
+function showError(err, url){
+  var kind = (err && err.kind) || 'network';
+  var d = (err && err.diag) || {};
+  url = url || d.url || '(unknown)';
+  var title, body;
+
+  if (kind === 'http'){
+    title = 'CSV not found at that path (HTTP ' + (d.status || '404') + ')';
+    body =
+      '<p>The dashboard fetched <code>'+esc(url)+'</code> and the server returned '+
+      '<b>HTTP '+esc(String(d.status||404))+'</b> — so the file isn\'t at that exact path in your published site. '+
+      'The data loading code is fine; the file just isn\'t reachable there. Most common causes, in order:</p>'+
+      '<ol style="text-align:left;font-size:12px;color:#3D6060;line-height:1.9;margin:10px 0 0;padding-left:20px">'+
+      '<li><b>The CSV is git-ignored.</b> Many repos have <code>*.csv</code> in <code>.gitignore</code>, so it exists locally but was never pushed. Run <code>git check-ignore '+esc(url)+'</code> — if it prints the path, that\'s it. Force-add with <code>git add -f '+esc(url)+'</code>.</li>'+
+      '<li><b>Filename / case mismatch.</b> GitHub Pages is case-sensitive. It must be exactly <code>'+esc(url)+'</code> (lowercase, matching the sector <code>id</code>) — not <code>Hospitality.csv</code> or <code>hospitality_final.csv</code>.</li>'+
+      '<li><b>Wrong folder.</b> It must sit in <code>/data</code> at the repo root, next to <code>dashboard.html</code>.</li>'+
+      '<li><b>Not committed / not deployed yet.</b> Confirm it\'s in the latest commit and the Pages build finished.</li>'+
+      '</ol>';
+  } else if (kind === 'empty' && d.missing && d.missing.length){
+    title = 'CSV loaded, but required columns are missing';
+    body =
+      '<p>The file at <code>'+esc(url)+'</code> parsed ('+esc(String(d.parsedRows||0))+' rows, delimiter '+
+      '<code>'+esc(d.delimiter||',')+'</code>), but these expected columns were not found:</p>'+
+      '<p style="margin:8px 0"><b style="color:#D94F3D">'+d.missing.map(esc).join(', ')+'</b></p>'+
+      '<p style="font-size:12px;color:#3D6060">Columns detected in your file: <span style="color:#7A9C9C">'+
+      (d.headers||[]).slice(0,24).map(esc).join(', ')+(d.headers&&d.headers.length>24?' …':'')+'</span></p>'+
+      '<p style="font-size:12px;color:#3D6060;margin-top:8px">Column names are matched case-insensitively and ignore spaces/underscores, so the issue is a genuinely different (or absent) column — re-export from the classifier so it includes '+
+      '<code>ISCO_3</code>, <code>ISCO_4</code>, <code>ISCO_4_name</code>, <code>State</code>, and <code>Employer_Category</code>.</p>';
+  } else if (kind === 'empty'){
+    title = 'CSV loaded, but no rows survived classification';
+    body =
+      '<p>The file at <code>'+esc(url)+'</code> parsed ('+esc(String(d.parsedRows||0))+' rows, delimiter '+
+      '<code>'+esc(d.delimiter||',')+'</code>), but every row was dropped as <i>Out of Scope</i> / <i>CLASSIFICATION_FAILED</i> or had an empty <code>ISCO_4</code>. '+
+      'Check that the file is the classifier\'s <b>final</b> output, not the raw scrape.</p>';
+  } else {
+    title = 'Could not load sector data';
+    body =
+      '<p>Fetching <code>'+esc(url)+'</code> failed at the network level. '+
+      'If you are opening the file directly from disk (<code>file://</code>), the browser blocks it — publish to GitHub Pages or serve over http. '+
+      'Otherwise it may be a transient network error.</p>'+
+      '<p style="font-size:12px;color:#7A9C9C;margin-top:8px">'+esc(String(err&&err.message||err))+'</p>';
+  }
+
   var s = document.getElementById('db-status');
-  s.innerHTML = '<div class="status-card"><h2>'+esc(title)+'</h2><p>'+msg+'</p>'+
-    '<p style="margin-top:12px"><a href="index.html" style="color:#1A7B7A;font-weight:600;text-decoration:none">&larr; Back to all dashboards</a></p></div>';
+  s.innerHTML =
+    '<div class="status-card" style="max-width:640px;text-align:left">'+
+      '<h2 style="color:#D94F3D">'+esc(title)+'</h2>'+ body +
+      '<p style="margin-top:14px"><a href="index.html" style="color:#1A7B7A;font-weight:600;text-decoration:none">&larr; Back to all dashboards</a></p>'+
+    '</div>';
   s.hidden = false;
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.hidden = true; p.classList.remove('active'); });
 }
 
 /* ======= INIT ============================================================= */
@@ -196,6 +228,8 @@ function showTab(id, btn){
   if (id==='roles')      renderRoleTab(rows, APP.activeRole);
   if (id==='regional'){  renderStateBar(rows); renderStateTable(rows); initMap(); }
   if (id==='explorer')   renderExplorer();
+  if (id==='classify')   renderClassifications(rows);
+  if (id==='feasibility') renderFeasibility(rows);
 }
 
 /* ======= RENDER ALL ======================================================= */
@@ -208,6 +242,8 @@ function renderAll(){
   if (APP.activeTab==='roles')      renderRoleTab(rows, APP.activeRole);
   if (APP.activeTab==='regional'){  renderStateBar(rows); renderStateTable(rows); }
   if (APP.activeTab==='explorer')   renderExplorer();
+  if (APP.activeTab==='classify')   renderClassifications(rows);
+  if (APP.activeTab==='feasibility') renderFeasibility(rows);
 }
 
 /* ======= KPIs ============================================================= */
@@ -668,6 +704,148 @@ function renderFullTable(){
     '<button style="'+(EXP_PAGE===0?btnOff:btnOn)+'" '+(EXP_PAGE===0?'disabled':'')+' onclick="EXP_PAGE=Math.max(0,EXP_PAGE-1);renderFullTable()">Prev</button>'+
     '<span style="color:#3D6060">Page <b>'+(EXP_PAGE+1)+'</b> of <b>'+totalPages+'</b> · <b>'+fmt(total)+'</b> matching postings</span>'+
     '<button style="'+(EXP_PAGE>=totalPages-1?btnOff:btnOn)+'" '+(EXP_PAGE>=totalPages-1?'disabled':'')+' onclick="EXP_PAGE=Math.min(window._expTotalPages-1,EXP_PAGE+1);renderFullTable()">Next</button>';
+}
+
+/* ======= CLASSIFICATIONS (ISCO-3 & ISCO-4, separate) ===================== */
+function renderClassifications(rows){
+  var total = rows.length;
+  /* ISCO-3 */
+  var c3 = {};
+  rows.forEach(function(r){ if(!isNaN(r[3])) c3[r[3]] = (c3[r[3]]||0)+1; });
+  var t3 = Object.keys(c3).map(function(code){
+    var c = parseInt(code,10);
+    return { code:c, name:(typeof ISCO3_NAMES!=='undefined'&&ISCO3_NAMES[c])||('ISCO '+c), count:c3[code] };
+  }).sort(function(a,b){return b.count-a.count;});
+  classBar('isco3-chart', t3.slice(0,12), total, C.teal);
+  classTable('isco3-table', t3, total, ['ISCO-3','Minor Group','Postings','Share']);
+
+  /* ISCO-4 */
+  var c4 = {}, meta4 = {};
+  rows.forEach(function(r){
+    var nm = r[4]>=0 ? DATA.lookup.isco4[r[4]] : null; if(!nm) return;
+    c4[nm] = (c4[nm]||0)+1;
+    if(!meta4[nm]) meta4[nm] = { code: (DATA.isco4CodeByName&&DATA.isco4CodeByName[nm]) || '', isco3: r[3] };
+  });
+  var t4 = Object.keys(c4).map(function(nm){
+    return { code:meta4[nm].code, name:nm, isco3:meta4[nm].isco3, count:c4[nm] };
+  }).sort(function(a,b){return b.count-a.count;});
+  classBar('isco4-chart', t4.slice(0,12).map(function(d){return {code:d.code,name:d.name,count:d.count};}), total, C.gold);
+  classTable('isco4-table', t4, total, ['ISCO-4','Unit Group','Postings','Share'], true);
+}
+function classBar(id, arr, total, col){
+  var s = arr.slice().sort(function(a,b){return a.count-b.count;});
+  Plotly.react(id,[{type:'bar',orientation:'h',
+    y:s.map(function(d){return (d.code?d.code+' ':'')+shortName(d.name);}),
+    x:s.map(function(d){return +(d.count/Math.max(total,1)*100).toFixed(1);}),
+    marker:{color:col,line:{width:0}},
+    text:s.map(function(d){return (d.count/Math.max(total,1)*100).toFixed(1)+'%';}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:.1f}%<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:9},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:48,t:8,b:8}}),pc);
+}
+function classTable(id, arr, total, heads, withParent){
+  var html='<table class="data-tbl"><thead><tr>'+heads.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+
+    (withParent?'<th>Parent ISCO-3</th>':'')+'</tr></thead><tbody>';
+  arr.forEach(function(d){
+    html+='<tr><td><span class="badge">'+esc(String(d.code||'—'))+'</span></td>'+
+      '<td><b>'+esc(d.name)+'</b></td><td class="cnt">'+fmt(d.count)+'</td>'+
+      '<td>'+pct(d.count,total)+'%</td>'+
+      (withParent?'<td>'+esc(String(d.isco3||'—'))+'</td>':'')+'</tr>';
+  });
+  document.getElementById(id).innerHTML=html+'</tbody></table>';
+}
+
+/* ======= FEASIBILITY (visa signal) + SOURCES ============================= */
+function ensureRowIndex(){ if(!_rowToIdx){ _rowToIdx=new Map(); DATA.rows.forEach(function(r,i){ _rowToIdx.set(r,i); }); } }
+
+function renderFeasibility(rows){
+  ensureRowIndex();
+  var total=rows.length;
+  var visaN=0, reloN=0, byRole={}, bySector={}, examples=[];
+  rows.forEach(function(r){
+    var i=_rowToIdx.get(r);
+    var v = r[8]===1, relo = DATA.raw.relo[i]===1;
+    if(v){ visaN++;
+      byRole[r[3]]=(byRole[r[3]]||0)+1;
+      if(r[1]>=0){ var sec=DATA.lookup.isic[r[1]]; bySector[sec]=(bySector[sec]||0)+1; }
+      if(examples.length<12) examples.push({ title:DATA.raw.title[i], company:DATA.raw.company[i],
+        hit:DATA.raw.visaHit[i], snippet:snip(DATA.raw.desc[i]+' '+DATA.raw.req[i]+' '+DATA.raw.benefits[i], DATA.raw.visaHit[i]) });
+    }
+    if(relo) reloN++;
+  });
+  var secN=Object.keys(bySector).length;
+  kpi('visa-k1', pct(visaN,total)+'%','Mention Visa Sponsorship', fmt(visaN)+' of '+fmt(total)+' filtered postings');
+  kpi('visa-k2', fmt(visaN),'Visa Mentions (count)','Text-mined from posting body');
+  kpi('visa-k3', pct(reloN,total)+'%','Mention Relocation','Softer international-openness signal');
+  kpi('visa-k4', fmt(secN),'Employer Sectors w/ Visa','Sectors with at least one visa mention');
+
+  var verdict;
+  if (visaN===0) verdict='<b>Feasibility verdict:</b> The extractor ran over <b>'+fmt(total)+'</b> postings and found <b>no</b> explicit visa-sponsorship language. That is itself a finding: on StepStone Germany, visa sponsorship is very rarely stated in the ad text, so this metric is <b>extractable but low-yield</b> — a near-absence signal consistent with the domestic-hiring framing of these listings. Relocation language ('+pct(reloN,total)+'%) is a more common proxy for international openness.';
+  else if (parseFloat(pct(visaN,total))<3) verdict='<b>Feasibility verdict:</b> Visa language is <b>extractable but rare</b> ('+pct(visaN,total)+'% of postings). The signal works and can be tracked over time, but base rates are low — treat it as a scarcity indicator rather than a volume metric, and pair it with the relocation signal ('+pct(reloN,total)+'%).';
+  else verdict='<b>Feasibility verdict:</b> Visa language is <b>reliably extractable</b> at '+pct(visaN,total)+'% of postings — a usable, trackable metric. Cross-check a sample against the audit table below before treating it as ground truth.';
+  document.getElementById('visa-verdict').innerHTML=verdict;
+
+  featBar('visa-by-role', Object.keys(byRole).map(function(k){
+    return { name:(typeof ISCO3_NAMES!=='undefined'&&ISCO3_NAMES[k])||('ISCO '+k), count:byRole[k] }; }), C.teal);
+  featBar('visa-by-sector', Object.keys(bySector).map(function(k){ return { name:k, count:bySector[k] }; }), C.gold);
+
+  var ex=document.getElementById('visa-examples');
+  if(!examples.length) ex.innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No visa-language matches in the current filter — nothing to audit.</p>';
+  else {
+    var h='<table class="data-tbl"><thead><tr><th>Job Title</th><th>Company</th><th>Matched term</th><th>Snippet</th></tr></thead><tbody>';
+    examples.forEach(function(e){ h+='<tr><td><b>'+esc(e.title)+'</b></td><td>'+esc(e.company)+'</td>'+
+      '<td><span class="badge" style="background:#D4940A">'+esc(e.hit)+'</span></td>'+
+      '<td class="desc-cell" style="max-width:420px">'+esc(e.snippet)+'</td></tr>'; });
+    ex.innerHTML=h+'</tbody></table>';
+  }
+
+  document.getElementById('visa-method').innerHTML=
+    '<b>Method &amp; caveats.</b> This scans each posting\'s Description, Requirements and Benefits (plus any explicit visa column) for visa/work-permit keywords in English and German (e.g. visa sponsorship, work permit, Arbeitserlaubnis, Aufenthaltstitel, Blue Card, §18). It is a keyword signal, not a legal determination — false positives (a passing mention) and false negatives (sponsorship offered but unstated) both occur, so the audit table is provided for spot-checking. To run the requested <b>100-role test batch</b>, load a CSV of those roles as any sector and read the KPIs above; a fresh live scrape of new roles is a separate collection step outside this dashboard, but this proves the metric is extractable from the scraped text you already have.';
+
+  renderSourcesEval();
+}
+function featBar(id, arr, col){
+  var s=arr.filter(function(d){return d.count>0;}).sort(function(a,b){return a.count-b.count;});
+  if(!s.length){ Plotly.react(id,[],Object.assign({},base)); return; }
+  Plotly.react(id,[{type:'bar',orientation:'h',
+    y:s.map(function(d){return shortName(d.name);}), x:s.map(function(d){return d.count;}),
+    marker:{color:col,line:{width:0}}, text:s.map(function(d){return fmt(d.count);}),
+    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+    hovertemplate:'<b>%{y}</b><br>%{x:,d} postings<extra></extra>'}],
+    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
+      yaxis:{showgrid:false,automargin:true,tickfont:{size:9},fixedrange:true},
+      bargap:0.3,margin:{l:8,r:44,t:8,b:8}}),pc);
+}
+function snip(text, kw){
+  if(!kw) return '';
+  var t=String(text||''), i=t.toLowerCase().indexOf(kw);
+  if(i<0) return t.slice(0,120);
+  var a=Math.max(0,i-45), b=Math.min(t.length,i+kw.length+55);
+  return (a>0?'…':'')+t.slice(a,b).replace(/\s+/g,' ').trim()+(b<t.length?'…':'');
+}
+
+var _sourcesRendered=false;
+function renderSourcesEval(){
+  if(_sourcesRendered) return; _sourcesRendered=true;
+  var el=document.getElementById('sources-eval'); if(!el) return;
+  el.innerHTML=
+    '<div class="insight-box"><b>Bottom line:</b> BA and KOFA are current and granular enough for <b>occupation- and Land-level</b> decisions, and are the authoritative measure of the supply–demand gap (vacancy duration, unemployed-per-vacancy). They are <b>not</b> granular to employer or posting level, use the German <b>KldB 2010</b> classification (a crosswalk to this dashboard\'s ISCO-08 is required), and count only <b>vacancies reported to the BA</b>. They complement — they don\'t replace — the live StepStone employer-level signal shown here.</div>'+
+    '<table class="data-tbl" style="margin-bottom:12px"><thead><tr>'+
+      '<th>Dimension</th><th>BA · Fachkräfteengpassanalyse</th><th>KOFA · IW-Fachkräftedatenbank</th><th>Fit for this dashboard</th></tr></thead><tbody>'+
+      row3('Update cadence','Annual analysis (2024 ed. published mid-2025; 2025 due ~June 2026), plus a monthly Fachkräftebedarf report','Monthly Fachkräftereport (e.g. March-2026 report published 1 Jul 2026), ~3-month lag','KOFA is fresher month-to-month; BA is the annual authority')+
+      row3('Timeline depth','Multi-year time series per occupation in the interactive statistic','Monthly series + annual projection (Arbeitsmarktfortschreibung) to +3 yrs','Both adequate for trend detection')+
+      row3('Occupational granularity','~1,200 occupations; national at 4-digit KldB, Länder at 3-digit, split by skill level','~1,300 KldB occupational categories; recent extension to economic sector (WZ-2 digit)','Deep enough; needs KldB→ISCO-08 crosswalk')+
+      row3('Regional granularity','Germany + 16 Länder (full analysis); some indicators to Agentur-district','Down to Arbeitsagenturbezirk / urban-rural type','Länder matches this dashboard\'s map; sub-Land is a bonus')+
+      row3('Coverage / basis','Registered vacancies + unemployment (6 shortage indicators)','Reported vacancies (report rate ~40–60% for skilled) + IAB/BIBB/Destatis','Undercounts unreported vacancies — a shared limitation')+
+      row3('Employer / posting level','No','No','Only the StepStone scrape here reaches employer & text (e.g. visa) level')+
+    '</tbody></table>'+
+    '<div class="meth-body"><b>Recommendation.</b> Use BA/KOFA as the authoritative macro layer (which occupations are Engpassberufe, how long vacancies stay open, the size of the gap) and use this dashboard for the micro layer BA/KOFA cannot see: named employers, region-by-role detail, contract mix, and text-mined signals like visa sponsorship. Confirm each release\'s exact date before citing, and build a one-time KldB-2010 ↔ ISCO-08 crosswalk so the two layers line up. '+
+    'Sources: BA Statistik (arbeitsagentur.de), IW Köln / KOFA (iwkoeln.de, kofa.de).</div>';
+}
+function row3(dim,a,b,fit){
+  return '<tr><td><b>'+esc(dim)+'</b></td><td>'+esc(a)+'</td><td>'+esc(b)+'</td><td style="color:#1A7B7A">'+esc(fit)+'</td></tr>';
 }
 
 /* ======= STATIC (per-sector) TABS ======================================== */

@@ -49,6 +49,8 @@
   <button class="tab-btn" onclick="showTab('roles',this)">Role Analysis</button>
   <button class="tab-btn" onclick="showTab('regional',this)">Regional Map</button>
   <button class="tab-btn" onclick="showTab('explorer',this)">Data Explorer</button>
+  <button class="tab-btn" onclick="showTab('classify',this)">Classifications</button>
+  <button class="tab-btn" onclick="showTab('feasibility',this)">Feasibility &amp; Sources</button>
 </nav>
 
 <!-- LOAD / ERROR STATUS -->
@@ -154,6 +156,61 @@
     </div>
     <div class="tbl-wrap" id="explorer-full"></div>
     <div id="explorer-nav" style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid #D4E5E5;font-size:11px"></div>
+  </div>
+</section>
+
+<!-- ====== CLASSIFICATIONS (ISCO-3 & ISCO-4, separately classified) ====== -->
+<section id="tab-classify" class="tab-panel" hidden>
+  <div class="insight-box">
+    <b>Standardised occupational classifications.</b> Every posting carries two ISCO-08 levels: the 3-digit <b>minor group (ISCO-3)</b> and the 4-digit <b>unit group (ISCO-4)</b>. They are shown here as separate, code-labelled tables so a policy user can act on either level of granularity. All header filters apply.
+  </div>
+  <div class="grid-2">
+    <div class="card card-t">
+      <div class="card-head">ISCO-3 · Minor Groups</div>
+      <div class="card-sub">3-digit occupational groups, by share of in-scope postings</div>
+      <div class="card-body"><div id="isco3-chart" style="height:300px"></div></div>
+      <div class="tbl-wrap" id="isco3-table"></div>
+    </div>
+    <div class="card card-g">
+      <div class="card-head">ISCO-4 · Unit Groups</div>
+      <div class="card-sub">4-digit occupations, by share of in-scope postings</div>
+      <div class="card-body"><div id="isco4-chart" style="height:300px"></div></div>
+      <div class="tbl-wrap" id="isco4-table"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== FEASIBILITY & SOURCES ====== -->
+<section id="tab-feasibility" class="tab-panel" hidden>
+  <div class="note-box">
+    <b>Two evaluation features requested (Jul 2026):</b> (1) a <b>visa-sponsorship feasibility signal</b> mined from posting text to test whether this metric is reliably extractable, and (2) an <b>evaluation of BA and KOFA</b> source timing and granularity for dashboard use.
+  </div>
+
+  <div class="card card-t" style="margin-bottom:14px">
+    <div class="card-head">Visa-Sponsorship Feasibility Signal</div>
+    <div class="card-sub">Share of in-scope postings whose text mentions visa sponsorship / work-permit language. Header filters apply.</div>
+    <div class="card-body" style="padding-top:12px">
+      <div class="kpi-row" style="margin-bottom:14px">
+        <div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="visa-k1"></div></div>
+        <div class="kpi-card"><div class="kpi-accent" style="background:#D4940A"></div><div class="kpi-body" id="visa-k2"></div></div>
+        <div class="kpi-card"><div class="kpi-accent" style="background:#2D9B9A"></div><div class="kpi-body" id="visa-k3"></div></div>
+        <div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="visa-k4"></div></div>
+      </div>
+      <div id="visa-verdict" class="insight-box"></div>
+      <div class="grid-2">
+        <div><div class="card-head" style="padding-left:0">Visa mentions by role group</div><div id="visa-by-role" style="height:230px"></div></div>
+        <div><div class="card-head" style="padding-left:0">Visa mentions by employer sector</div><div id="visa-by-sector" style="height:230px"></div></div>
+      </div>
+      <div class="card-head" style="padding-left:0;margin-top:10px">Example matches (audit sample)</div>
+      <div class="tbl-wrap" id="visa-examples"></div>
+      <div class="note-box" id="visa-method" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="card card-b">
+    <div class="card-head">Source Evaluation · BA Engpassanalyse vs. KOFA (timeline depth &amp; granularity)</div>
+    <div class="card-sub">Whether the two official skilled-labour sources are current and granular enough to drive decisions on this dashboard</div>
+    <div class="card-body" style="padding-top:12px" id="sources-eval"></div>
   </div>
 </section>
 
