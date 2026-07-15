@@ -10,16 +10,14 @@
      • match column names case-/format-insensitively (Job_Title == job title),
    and hand back precise diagnostics instead of a misleading "test locally"
    message. The aggregation core is unchanged and still emits the structures the
-   render engine consumes, PLUS ISCO-4 codes, per-code classification tables,
-   and a visa-sponsorship feasibility signal.
+   render engine consumes, PLUS ISCO-4 codes and per-code classification tables.
 
      DATA = {
        lookup:  { states[], isic[], isco4[], empTypes[], weekLabels[] },
-       rows:    [[state, isic, isco2, isco3, isco4, emp, genuine, week, visa], ...],
+       rows:    [[state, isic, isco2, isco3, isco4, emp, genuine, week], ...],
        raw:     { title[], date[], company[], empCat[], salary[], desc[], req[],
-                  benefits[], workType[], url[], visa[], visaHit[] },  // by row idx
-       meta:    { total, dateRange, weeks, scraped, clinical,
-                  visaCount, visaPct, cols[] },
+                  benefits[], workType[], url[] },                     // by row idx
+       meta:    { total, dateRange, weeks, scraped, clinical, cols[] },
        roleGroups:   [ {code, name, color}, ... ],   // top ISCO-3, drives sub-tabs
        roleTable:    [ {isco3, name, count, ptPct, topEmp, topState}, ... ],
        isco3Table:   [ {code, name, count, pct}, ... ],            // ALL ISCO-3
@@ -28,34 +26,16 @@
        companies:    { <isco3>: [ {name, count, isic}, ... ] },
        companiesAll: [ {name, count, isic}, ... ],
        sectorEmployers:{ <isco3>: { <sector>: [ {name, count}, ... ] } },
-       visaByRole:   { <isco3>: count }, visaBySector: { <sector>: count },
-       visaExamples: [ {title, company, snippet}, ... ]
+       isco4CodeByName:{ <isco4 name>: <numeric code> }
      }
 
    Row encoding:
      r[0] state idx  r[1] employer idx  r[2] ISCO_2  r[3] ISCO_3
-     r[4] isco4-name idx  r[5] employment idx  r[6] genuine  r[7] week  r[8] visa
+     r[4] isco4-name idx  r[5] employment idx  r[6] genuine  r[7] week
    ============================================================================ */
 
 var EMP_ORDER = ["Full-time", "Part-time", "Not specified", "Full-time or Part-time"];
 var ROLE_PALETTE = ["#1A7B7A", "#2D9B9A", "#D4940A", "#0F5B5A", "#E8A820", "#4AABAA"];
-
-/* STRICT visa-sponsorship keywords (English + German). Case-insensitive
-   substring. Deliberately excludes "relocation" — relocation support is NOT the
-   same as visa sponsorship and is tracked separately below.                    */
-var VISA_KEYWORDS = [
-  "visa sponsor", "visa sponsorship", "sponsor a visa", "sponsor your visa",
-  "work visa", "visa support", "visa assistance", "visa", "visum",
-  "work permit", "arbeitserlaubnis", "aufenthaltstitel", "aufenthaltserlaubnis",
-  "blue card", "blaue karte", "fachkräfteeinwanderung", "skilled immigration act",
-  "skilled worker visa", "§ 18", "section 18", "sponsor the visa"
-];
-
-/* Relocation is a distinct, softer "international-openness" signal. */
-var RELO_KEYWORDS = [
-  "relocation support", "relocation package", "relocation assistance",
-  "relocation bonus", "relocation", "umzugshilfe", "umzugsunterstützung"
-];
 
 /* ---- column matching: normalise header + candidate names identically ------ */
 function keyNorm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -164,10 +144,6 @@ function buildDATA(rawRows, diag) {
     var desc = pick(row, ["Description"]);
     var req  = pick(row, ["Requirements"]);
     var ben  = pick(row, ["Benefits"]);
-    var visaCol = pick(row, ["Visa_Sponsorship", "Visa", "Sponsorship"]);
-    var blob = (visaCol + " " + desc + " " + req + " " + ben);
-    var visaHit = detectHit(blob, VISA_KEYWORDS);
-    var reloHit = detectHit(blob, RELO_KEYWORDS);
 
     recs.push({
       state:    pick(row, ["State", "Bundesland", "Region"]) || "",
@@ -187,11 +163,7 @@ function buildDATA(rawRows, diag) {
       req:      req || "",
       benefits: ben || "",
       workType: pick(row, ["Work_Type", "Workplace", "Remote"]) || "",
-      url:      pick(row, ["Job_URL", "URL", "Link", "Company_URL"]) || "",
-      visaHit:  visaHit,               // matched visa keyword or ""
-      visa:     visaHit ? 1 : 0,
-      reloHit:  reloHit,               // matched relocation keyword or ""
-      relo:     reloHit ? 1 : 0
+      url:      pick(row, ["Job_URL", "URL", "Link", "Company_URL"]) || ""
     });
   });
 
@@ -229,13 +201,10 @@ function buildDATA(rawRows, diag) {
   /* 4. Encode rows + raw arrays + aggregates in one pass. */
   var rows = [];
   var raw = { title: [], date: [], company: [], empCat: [], salary: [],
-              desc: [], req: [], benefits: [], workType: [], url: [],
-              visa: [], visaHit: [], relo: [], reloHit: [] };
+              desc: [], req: [], benefits: [], workType: [], url: [] };
   var seen = {};
   var byState = {}, byRole = {}, byIsco3 = {}, byIsco4 = {};
   var coRole = {}, coSec = {}, coAll = {};
-  var visaByRole = {}, visaBySector = {}, visaExamples = [];
-  var reloByRole = {}, reloBySector = {};
 
   recs.forEach(function (r) {
     var key = (r.company + "|" + r.title).toLowerCase();
@@ -249,16 +218,13 @@ function buildDATA(rawRows, diag) {
       isco4Ix[r.isco4nm],
       empIx[r.emp],
       genuine,
-      weekIndexOf(r.date),
-      r.visa
+      weekIndexOf(r.date)
     ]);
 
     raw.title.push(r.title);     raw.date.push(r.dateStr);   raw.company.push(r.company);
     raw.empCat.push(r.empCat);   raw.salary.push(r.salary);  raw.desc.push(r.desc);
     raw.req.push(r.req);         raw.benefits.push(r.benefits);
     raw.workType.push(r.workType); raw.url.push(r.url);
-    raw.visa.push(r.visa);       raw.visaHit.push(r.visaHit);
-    raw.relo.push(r.relo);       raw.reloHit.push(r.reloHit);
 
     if (r.state) {
       var g = byState[r.state] || (byState[r.state] = { count: 0, roles: {}, emps: {} });
@@ -287,17 +253,6 @@ function buildDATA(rawRows, diag) {
     }
     var ca = coAll[r.company] || (coAll[r.company] = { count: 0, isic: r.isic }); ca.count++;
 
-    if (r.visa) {
-      visaByRole[r.isco3]   = (visaByRole[r.isco3]   || 0) + 1;
-      visaBySector[r.isic]  = (visaBySector[r.isic]  || 0) + 1;
-      if (visaExamples.length < 12)
-        visaExamples.push({ title: r.title, company: r.company, hit: r.visaHit,
-                            snippet: snippetAround((r.desc + " " + r.req + " " + r.benefits), r.visaHit) });
-    }
-    if (r.relo) {
-      reloByRole[r.isco3]   = (reloByRole[r.isco3]   || 0) + 1;
-      reloBySector[r.isic]  = (reloBySector[r.isic]  || 0) + 1;
-    }
   });
 
   /* 5. roleTable / roleGroups. */
@@ -363,42 +318,23 @@ function buildDATA(rawRows, diag) {
   var dateRange = dated.length
     ? fmtDay(new Date(Math.min.apply(null, dated))) + " – " + fmtDay(new Date(Math.max.apply(null, dated)))
     : "—";
-  var visaCount = raw.visa.reduce(function (s, v) { return s + v; }, 0);
-  var reloCount = raw.relo.reduce(function (s, v) { return s + v; }, 0);
 
   return {
     lookup: { states: states, isic: isic, isco4: isco4, empTypes: empTypes, weekLabels: weekLabels },
     rows: rows, raw: raw,
     meta: { total: rows.length, dateRange: dateRange, weeks: weekLabels.length,
             scraped: rawRows.length, clinical: rows.length,
-            visaCount: visaCount, visaPct: rows.length ? +(visaCount / rows.length * 100).toFixed(2) : 0,
-            reloCount: reloCount, reloPct: rows.length ? +(reloCount / rows.length * 100).toFixed(2) : 0,
             cols: diag.headers || [] },
     roleGroups: roleGroups, roleTable: roleTable,
     isco3Table: isco3Table, isco4Table: isco4Table,
     stateGeo: stateGeo, companies: companies, companiesAll: companiesAll,
     sectorEmployers: sectorEmployers,
-    visaByRole: visaByRole, visaBySector: visaBySector, visaExamples: visaExamples,
-    reloByRole: reloByRole, reloBySector: reloBySector,
     isco4CodeByName: isco4CodeByName
   };
 }
 
 /* ---- helpers -------------------------------------------------------------- */
 function isPartTime(label) { return label === "Part-time" || label === "Full-time or Part-time"; }
-function detectHit(text, keywords) {
-  var t = String(text || "").toLowerCase();
-  for (var i = 0; i < keywords.length; i++) if (t.indexOf(keywords[i]) !== -1) return keywords[i];
-  return "";
-}
-function snippetAround(text, kw) {
-  if (!kw) return "";
-  var t = String(text || ""), i = t.toLowerCase().indexOf(kw);
-  if (i < 0) return t.slice(0, 120);
-  var a = Math.max(0, i - 45), b = Math.min(t.length, i + kw.length + 55);
-  return (a > 0 ? "…" : "") + t.slice(a, b).replace(/\s+/g, " ").trim() + (b < t.length ? "…" : "");
-}
-
 var ISCO3_NAMES = {
   221:"Medical Doctors", 222:"Nursing and Midwifery Professionals",
   226:"Allied Health Professionals", 321:"Medical and Pharmaceutical Technicians",

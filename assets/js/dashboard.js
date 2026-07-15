@@ -229,7 +229,6 @@ function showTab(id, btn){
   if (id==='regional'){  renderStateBar(rows); renderStateTable(rows); initMap(); }
   if (id==='explorer')   renderExplorer();
   if (id==='classify')   renderClassifications(rows);
-  if (id==='feasibility') renderFeasibility(rows);
 }
 
 /* ======= RENDER ALL ======================================================= */
@@ -243,7 +242,6 @@ function renderAll(){
   if (APP.activeTab==='regional'){  renderStateBar(rows); renderStateTable(rows); }
   if (APP.activeTab==='explorer')   renderExplorer();
   if (APP.activeTab==='classify')   renderClassifications(rows);
-  if (APP.activeTab==='feasibility') renderFeasibility(rows);
 }
 
 /* ======= KPIs ============================================================= */
@@ -706,32 +704,165 @@ function renderFullTable(){
     '<button style="'+(EXP_PAGE>=totalPages-1?btnOff:btnOn)+'" '+(EXP_PAGE>=totalPages-1?'disabled':'')+' onclick="EXP_PAGE=Math.min(window._expTotalPages-1,EXP_PAGE+1);renderFullTable()">Next</button>';
 }
 
-/* ======= CLASSIFICATIONS (ISCO-3 & ISCO-4, separate) ===================== */
+/* ======= CLASSIFICATIONS (ISCO-3 & ISCO-4, national + regional) ========== */
+var CLS_VIEW='national';
+function showClassView(v, btn){
+  CLS_VIEW=v;
+  document.querySelectorAll('#tab-classify .sub-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var n=document.getElementById('cv-national'), r=document.getElementById('cv-region');
+  n.classList.toggle('active', v==='national');
+  r.classList.toggle('active', v==='region');
+  renderClassifications(getRows());
+}
+
+function isco3Name(code){
+  return (typeof ISCO3_NAMES!=='undefined' && ISCO3_NAMES[code]) || ('ISCO '+code);
+}
+
 function renderClassifications(rows){
+  if (CLS_VIEW==='national') renderClassNational(rows);
+  else                       renderClassRegional(rows);
+}
+
+function renderClassNational(rows){
   var total = rows.length;
-  /* ISCO-3 */
   var c3 = {};
   rows.forEach(function(r){ if(!isNaN(r[3])) c3[r[3]] = (c3[r[3]]||0)+1; });
   var t3 = Object.keys(c3).map(function(code){
     var c = parseInt(code,10);
-    return { code:c, name:(typeof ISCO3_NAMES!=='undefined'&&ISCO3_NAMES[c])||('ISCO '+c), count:c3[code] };
+    return { code:c, name:isco3Name(c), count:c3[code] };
   }).sort(function(a,b){return b.count-a.count;});
   classBar('isco3-chart', t3.slice(0,12), total, C.teal);
   classTable('isco3-table', t3, total, ['ISCO-3','Minor Group','Postings','Share']);
 
-  /* ISCO-4 */
   var c4 = {}, meta4 = {};
   rows.forEach(function(r){
     var nm = r[4]>=0 ? DATA.lookup.isco4[r[4]] : null; if(!nm) return;
     c4[nm] = (c4[nm]||0)+1;
-    if(!meta4[nm]) meta4[nm] = { code: (DATA.isco4CodeByName&&DATA.isco4CodeByName[nm]) || '', isco3: r[3] };
+    if(!meta4[nm]) meta4[nm] = { code:(DATA.isco4CodeByName&&DATA.isco4CodeByName[nm])||'', isco3:r[3] };
   });
   var t4 = Object.keys(c4).map(function(nm){
     return { code:meta4[nm].code, name:nm, isco3:meta4[nm].isco3, count:c4[nm] };
   }).sort(function(a,b){return b.count-a.count;});
-  classBar('isco4-chart', t4.slice(0,12).map(function(d){return {code:d.code,name:d.name,count:d.count};}), total, C.gold);
+  classBar('isco4-chart', t4.slice(0,12), total, C.gold);
   classTable('isco4-table', t4, total, ['ISCO-4','Unit Group','Postings','Share'], true);
 }
+
+/* ---- regional classification -------------------------------------------- */
+function renderClassRegional(rows){
+  /* aggregate: state -> isco3 -> count, and isco3 -> state -> count */
+  var byState={}, byRole={}, stateTot={}, roleTot={};
+  rows.forEach(function(r){
+    if(r[0]<0 || isNaN(r[3])) return;
+    var st=DATA.lookup.states[r[0]], code=r[3];
+    (byState[st]=byState[st]||{})[code]=(byState[st][code]||0)+1;
+    (byRole[code]=byRole[code]||{})[st]=(byRole[code][st]||0)+1;
+    stateTot[st]=(stateTot[st]||0)+1;
+    roleTot[code]=(roleTot[code]||0)+1;
+  });
+
+  var states=Object.keys(stateTot).sort(function(a,b){return stateTot[b]-stateTot[a];});
+  var codes=Object.keys(roleTot).sort(function(a,b){return roleTot[b]-roleTot[a];}).slice(0,10);
+
+  /* heatmap: rows = states, cols = ISCO-3, value = % of that state's postings */
+  if(!states.length || !codes.length){
+    document.getElementById('cls-region-heat').innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No regional data in the current filter.</p>';
+  } else {
+    var z=states.map(function(st){
+      return codes.map(function(c){
+        var n=(byState[st]&&byState[st][c])||0;
+        return stateTot[st] ? +(n/stateTot[st]*100).toFixed(1) : 0;
+      });
+    });
+    var txt=states.map(function(st){
+      return codes.map(function(c){ return String((byState[st]&&byState[st][c])||0); });
+    });
+    Plotly.react('cls-region-heat',[{
+      type:'heatmap', z:z, x:codes.map(function(c){return c+' '+shortName(isco3Name(c));}), y:states,
+      text:txt, colorscale:[[0,'#F4FAFA'],[0.5,'#7FC3C2'],[1,'#0F5B5A']],
+      hovertemplate:'<b>%{y}</b><br>%{x}<br>%{z}% of state postings (%{text} jobs)<extra></extra>',
+      colorbar:{title:{text:'% of state',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9}}
+    }], Object.assign({},base,{
+      xaxis:{side:'top',tickangle:-35,tickfont:{size:9},fixedrange:true},
+      yaxis:{automargin:true,tickfont:{size:9},fixedrange:true},
+      margin:{l:8,r:8,t:110,b:8}}), pc);
+  }
+
+  /* concentration: for each ISCO-3, share held by its top state */
+  var conc=Object.keys(roleTot).map(function(c){
+    var dist=byRole[c]||{}, top=null, n=-1;
+    for(var st in dist) if(dist[st]>n){ n=dist[st]; top=st; }
+    return { code:parseInt(c,10), name:isco3Name(c), total:roleTot[c], topState:top||'—',
+             topN:Math.max(n,0), share: roleTot[c] ? +(Math.max(n,0)/roleTot[c]*100).toFixed(1) : 0,
+             nStates:Object.keys(dist).length };
+  }).sort(function(a,b){return b.total-a.total;});
+
+  var cs=conc.slice(0,12).slice().sort(function(a,b){return a.share-b.share;});
+  if(!cs.length){
+    document.getElementById('cls-conc-chart').innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No data.</p>';
+  } else {
+    Plotly.react('cls-conc-chart',[{type:'bar',orientation:'h',
+      y:cs.map(function(d){return d.code+' '+shortName(d.name);}),
+      x:cs.map(function(d){return d.share;}),
+      marker:{color:cs.map(function(d){return d.share>=50?C.gold:C.teal;}),line:{width:0}},
+      text:cs.map(function(d){return d.share+'% ('+d.topState+')';}),
+      textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
+      hovertemplate:'<b>%{y}</b><br>%{x}% of postings in top state<extra></extra>'}],
+      Object.assign({},base,{
+        xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,range:[0,118],fixedrange:true},
+        yaxis:{showgrid:false,automargin:true,tickfont:{size:9},fixedrange:true},
+        bargap:0.3,margin:{l:8,r:120,t:8,b:8}}),pc);
+  }
+
+  var h='<table class="data-tbl"><thead><tr><th>ISCO-3</th><th>Minor Group</th><th>Postings</th><th>States Present</th><th>Top State</th><th>Top-State Share</th></tr></thead><tbody>';
+  conc.forEach(function(d){
+    h+='<tr><td><span class="badge">'+d.code+'</span></td><td><b>'+esc(d.name)+'</b></td>'+
+       '<td class="cnt">'+fmt(d.total)+'</td><td>'+d.nStates+'</td><td>'+esc(d.topState)+'</td>'+
+       '<td class="'+(d.share>=50?'gld':'')+'">'+d.share+'%</td></tr>';
+  });
+  document.getElementById('cls-conc-table').innerHTML=h+'</tbody></table>';
+
+  /* region profile selector */
+  var sel=document.getElementById('cls-state');
+  if(sel && sel.dataset.filled!=='1'){
+    sel.innerHTML=DATA.lookup.states.map(function(s){return '<option value="'+esc(s)+'">'+esc(s)+'</option>';}).join('');
+    sel.dataset.filled='1';
+  }
+  renderRegionProfile();
+}
+
+function renderRegionProfile(){
+  var sel=document.getElementById('cls-state'); if(!sel) return;
+  var st=sel.value || DATA.lookup.states[0];
+  var si=DATA.lookup.states.indexOf(st);
+  var rows=getRows().filter(function(r){ return r[0]===si; });
+  var total=rows.length;
+
+  var c3={};
+  rows.forEach(function(r){ if(!isNaN(r[3])) c3[r[3]]=(c3[r[3]]||0)+1; });
+  var t3=Object.keys(c3).map(function(c){ return {code:parseInt(c,10),name:isco3Name(c),count:c3[c]}; })
+    .sort(function(a,b){return b.count-a.count;});
+
+  var c4={},m4={};
+  rows.forEach(function(r){
+    var nm=r[4]>=0?DATA.lookup.isco4[r[4]]:null; if(!nm) return;
+    c4[nm]=(c4[nm]||0)+1;
+    if(!m4[nm]) m4[nm]={code:(DATA.isco4CodeByName&&DATA.isco4CodeByName[nm])||'',isco3:r[3]};
+  });
+  var t4=Object.keys(c4).map(function(nm){ return {code:m4[nm].code,name:nm,isco3:m4[nm].isco3,count:c4[nm]}; })
+    .sort(function(a,b){return b.count-a.count;});
+
+  if(!total){
+    var msg='<p style="padding:12px;color:#7A9C9C;font-size:11px">No postings for '+esc(st)+' under the current filters.</p>';
+    document.getElementById('cls-rp-isco3').innerHTML=msg;
+    document.getElementById('cls-rp-isco4').innerHTML=msg;
+    return;
+  }
+  classTable('cls-rp-isco3', t3, total, ['ISCO-3','Minor Group','Postings','Share of '+st]);
+  classTable('cls-rp-isco4', t4, total, ['ISCO-4','Unit Group','Postings','Share of '+st], true);
+}
+
 function classBar(id, arr, total, col){
   var s = arr.slice().sort(function(a,b){return a.count-b.count;});
   Plotly.react(id,[{type:'bar',orientation:'h',
@@ -755,97 +886,6 @@ function classTable(id, arr, total, heads, withParent){
       (withParent?'<td>'+esc(String(d.isco3||'—'))+'</td>':'')+'</tr>';
   });
   document.getElementById(id).innerHTML=html+'</tbody></table>';
-}
-
-/* ======= FEASIBILITY (visa signal) + SOURCES ============================= */
-function ensureRowIndex(){ if(!_rowToIdx){ _rowToIdx=new Map(); DATA.rows.forEach(function(r,i){ _rowToIdx.set(r,i); }); } }
-
-function renderFeasibility(rows){
-  ensureRowIndex();
-  var total=rows.length;
-  var visaN=0, reloN=0, byRole={}, bySector={}, examples=[];
-  rows.forEach(function(r){
-    var i=_rowToIdx.get(r);
-    var v = r[8]===1, relo = DATA.raw.relo[i]===1;
-    if(v){ visaN++;
-      byRole[r[3]]=(byRole[r[3]]||0)+1;
-      if(r[1]>=0){ var sec=DATA.lookup.isic[r[1]]; bySector[sec]=(bySector[sec]||0)+1; }
-      if(examples.length<12) examples.push({ title:DATA.raw.title[i], company:DATA.raw.company[i],
-        hit:DATA.raw.visaHit[i], snippet:snip(DATA.raw.desc[i]+' '+DATA.raw.req[i]+' '+DATA.raw.benefits[i], DATA.raw.visaHit[i]) });
-    }
-    if(relo) reloN++;
-  });
-  var secN=Object.keys(bySector).length;
-  kpi('visa-k1', pct(visaN,total)+'%','Mention Visa Sponsorship', fmt(visaN)+' of '+fmt(total)+' filtered postings');
-  kpi('visa-k2', fmt(visaN),'Visa Mentions (count)','Text-mined from posting body');
-  kpi('visa-k3', pct(reloN,total)+'%','Mention Relocation','Softer international-openness signal');
-  kpi('visa-k4', fmt(secN),'Employer Sectors w/ Visa','Sectors with at least one visa mention');
-
-  var verdict;
-  if (visaN===0) verdict='<b>Feasibility verdict:</b> The extractor ran over <b>'+fmt(total)+'</b> postings and found <b>no</b> explicit visa-sponsorship language. That is itself a finding: on StepStone Germany, visa sponsorship is very rarely stated in the ad text, so this metric is <b>extractable but low-yield</b> — a near-absence signal consistent with the domestic-hiring framing of these listings. Relocation language ('+pct(reloN,total)+'%) is a more common proxy for international openness.';
-  else if (parseFloat(pct(visaN,total))<3) verdict='<b>Feasibility verdict:</b> Visa language is <b>extractable but rare</b> ('+pct(visaN,total)+'% of postings). The signal works and can be tracked over time, but base rates are low — treat it as a scarcity indicator rather than a volume metric, and pair it with the relocation signal ('+pct(reloN,total)+'%).';
-  else verdict='<b>Feasibility verdict:</b> Visa language is <b>reliably extractable</b> at '+pct(visaN,total)+'% of postings — a usable, trackable metric. Cross-check a sample against the audit table below before treating it as ground truth.';
-  document.getElementById('visa-verdict').innerHTML=verdict;
-
-  featBar('visa-by-role', Object.keys(byRole).map(function(k){
-    return { name:(typeof ISCO3_NAMES!=='undefined'&&ISCO3_NAMES[k])||('ISCO '+k), count:byRole[k] }; }), C.teal);
-  featBar('visa-by-sector', Object.keys(bySector).map(function(k){ return { name:k, count:bySector[k] }; }), C.gold);
-
-  var ex=document.getElementById('visa-examples');
-  if(!examples.length) ex.innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No visa-language matches in the current filter — nothing to audit.</p>';
-  else {
-    var h='<table class="data-tbl"><thead><tr><th>Job Title</th><th>Company</th><th>Matched term</th><th>Snippet</th></tr></thead><tbody>';
-    examples.forEach(function(e){ h+='<tr><td><b>'+esc(e.title)+'</b></td><td>'+esc(e.company)+'</td>'+
-      '<td><span class="badge" style="background:#D4940A">'+esc(e.hit)+'</span></td>'+
-      '<td class="desc-cell" style="max-width:420px">'+esc(e.snippet)+'</td></tr>'; });
-    ex.innerHTML=h+'</tbody></table>';
-  }
-
-  document.getElementById('visa-method').innerHTML=
-    '<b>Method &amp; caveats.</b> This scans each posting\'s Description, Requirements and Benefits (plus any explicit visa column) for visa/work-permit keywords in English and German (e.g. visa sponsorship, work permit, Arbeitserlaubnis, Aufenthaltstitel, Blue Card, §18). It is a keyword signal, not a legal determination — false positives (a passing mention) and false negatives (sponsorship offered but unstated) both occur, so the audit table is provided for spot-checking. To run the requested <b>100-role test batch</b>, load a CSV of those roles as any sector and read the KPIs above; a fresh live scrape of new roles is a separate collection step outside this dashboard, but this proves the metric is extractable from the scraped text you already have.';
-
-  renderSourcesEval();
-}
-function featBar(id, arr, col){
-  var s=arr.filter(function(d){return d.count>0;}).sort(function(a,b){return a.count-b.count;});
-  if(!s.length){ Plotly.react(id,[],Object.assign({},base)); return; }
-  Plotly.react(id,[{type:'bar',orientation:'h',
-    y:s.map(function(d){return shortName(d.name);}), x:s.map(function(d){return d.count;}),
-    marker:{color:col,line:{width:0}}, text:s.map(function(d){return fmt(d.count);}),
-    textposition:'outside',textfont:{size:10,color:C.textM},cliponaxis:false,
-    hovertemplate:'<b>%{y}</b><br>%{x:,d} postings<extra></extra>'}],
-    Object.assign({},base,{xaxis:{showgrid:true,gridcolor:C.border,zeroline:false,showticklabels:false,fixedrange:true},
-      yaxis:{showgrid:false,automargin:true,tickfont:{size:9},fixedrange:true},
-      bargap:0.3,margin:{l:8,r:44,t:8,b:8}}),pc);
-}
-function snip(text, kw){
-  if(!kw) return '';
-  var t=String(text||''), i=t.toLowerCase().indexOf(kw);
-  if(i<0) return t.slice(0,120);
-  var a=Math.max(0,i-45), b=Math.min(t.length,i+kw.length+55);
-  return (a>0?'…':'')+t.slice(a,b).replace(/\s+/g,' ').trim()+(b<t.length?'…':'');
-}
-
-var _sourcesRendered=false;
-function renderSourcesEval(){
-  if(_sourcesRendered) return; _sourcesRendered=true;
-  var el=document.getElementById('sources-eval'); if(!el) return;
-  el.innerHTML=
-    '<div class="insight-box"><b>Bottom line:</b> BA and KOFA are current and granular enough for <b>occupation- and Land-level</b> decisions, and are the authoritative measure of the supply–demand gap (vacancy duration, unemployed-per-vacancy). They are <b>not</b> granular to employer or posting level, use the German <b>KldB 2010</b> classification (a crosswalk to this dashboard\'s ISCO-08 is required), and count only <b>vacancies reported to the BA</b>. They complement — they don\'t replace — the live StepStone employer-level signal shown here.</div>'+
-    '<table class="data-tbl" style="margin-bottom:12px"><thead><tr>'+
-      '<th>Dimension</th><th>BA · Fachkräfteengpassanalyse</th><th>KOFA · IW-Fachkräftedatenbank</th><th>Fit for this dashboard</th></tr></thead><tbody>'+
-      row3('Update cadence','Annual analysis (2024 ed. published mid-2025; 2025 due ~June 2026), plus a monthly Fachkräftebedarf report','Monthly Fachkräftereport (e.g. March-2026 report published 1 Jul 2026), ~3-month lag','KOFA is fresher month-to-month; BA is the annual authority')+
-      row3('Timeline depth','Multi-year time series per occupation in the interactive statistic','Monthly series + annual projection (Arbeitsmarktfortschreibung) to +3 yrs','Both adequate for trend detection')+
-      row3('Occupational granularity','~1,200 occupations; national at 4-digit KldB, Länder at 3-digit, split by skill level','~1,300 KldB occupational categories; recent extension to economic sector (WZ-2 digit)','Deep enough; needs KldB→ISCO-08 crosswalk')+
-      row3('Regional granularity','Germany + 16 Länder (full analysis); some indicators to Agentur-district','Down to Arbeitsagenturbezirk / urban-rural type','Länder matches this dashboard\'s map; sub-Land is a bonus')+
-      row3('Coverage / basis','Registered vacancies + unemployment (6 shortage indicators)','Reported vacancies (report rate ~40–60% for skilled) + IAB/BIBB/Destatis','Undercounts unreported vacancies — a shared limitation')+
-      row3('Employer / posting level','No','No','Only the StepStone scrape here reaches employer & text (e.g. visa) level')+
-    '</tbody></table>'+
-    '<div class="meth-body"><b>Recommendation.</b> Use BA/KOFA as the authoritative macro layer (which occupations are Engpassberufe, how long vacancies stay open, the size of the gap) and use this dashboard for the micro layer BA/KOFA cannot see: named employers, region-by-role detail, contract mix, and text-mined signals like visa sponsorship. Confirm each release\'s exact date before citing, and build a one-time KldB-2010 ↔ ISCO-08 crosswalk so the two layers line up. '+
-    'Sources: BA Statistik (arbeitsagentur.de), IW Köln / KOFA (iwkoeln.de, kofa.de).</div>';
-}
-function row3(dim,a,b,fit){
-  return '<tr><td><b>'+esc(dim)+'</b></td><td>'+esc(a)+'</td><td>'+esc(b)+'</td><td style="color:#1A7B7A">'+esc(fit)+'</td></tr>';
 }
 
 /* ======= STATIC (per-sector) TABS ======================================== */

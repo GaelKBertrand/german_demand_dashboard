@@ -50,7 +50,6 @@
   <button class="tab-btn" onclick="showTab('regional',this)">Regional Map</button>
   <button class="tab-btn" onclick="showTab('explorer',this)">Data Explorer</button>
   <button class="tab-btn" onclick="showTab('classify',this)">Classifications</button>
-  <button class="tab-btn" onclick="showTab('feasibility',this)">Feasibility &amp; Sources</button>
 </nav>
 
 <!-- LOAD / ERROR STATUS -->
@@ -159,58 +158,64 @@
   </div>
 </section>
 
-<!-- ====== CLASSIFICATIONS (ISCO-3 & ISCO-4, separately classified) ====== -->
+<!-- ====== CLASSIFICATIONS (ISCO-3 & ISCO-4, and by region) ====== -->
 <section id="tab-classify" class="tab-panel" hidden>
   <div class="insight-box">
-    <b>Standardised occupational classifications.</b> Every posting carries two ISCO-08 levels: the 3-digit <b>minor group (ISCO-3)</b> and the 4-digit <b>unit group (ISCO-4)</b>. They are shown here as separate, code-labelled tables so a policy user can act on either level of granularity. All header filters apply.
+    <b>Standardised occupational classifications.</b> Every posting carries two ISCO-08 levels: the 3-digit <b>minor group (ISCO-3)</b> and the 4-digit <b>unit group (ISCO-4)</b>. They are shown separately as code-labelled tables, and then broken down <b>by region</b> — which occupations each state actually demands, and where each occupation concentrates. All header filters apply.
   </div>
-  <div class="grid-2">
-    <div class="card card-t">
-      <div class="card-head">ISCO-3 · Minor Groups</div>
-      <div class="card-sub">3-digit occupational groups, by share of in-scope postings</div>
-      <div class="card-body"><div id="isco3-chart" style="height:300px"></div></div>
-      <div class="tbl-wrap" id="isco3-table"></div>
+
+  <div class="sub-tab-nav">
+    <button class="sub-btn active" onclick="showClassView('national',this)">National</button>
+    <button class="sub-btn" onclick="showClassView('region',this)">By Region</button>
+  </div>
+
+  <!-- ---- NATIONAL ---- -->
+  <div id="cv-national" class="sub-panel active">
+    <div class="grid-2">
+      <div class="card card-t">
+        <div class="card-head">ISCO-3 · Minor Groups</div>
+        <div class="card-sub">3-digit occupational groups, by share of in-scope postings</div>
+        <div class="card-body"><div id="isco3-chart" style="height:300px"></div></div>
+        <div class="tbl-wrap" id="isco3-table"></div>
+      </div>
+      <div class="card card-g">
+        <div class="card-head">ISCO-4 · Unit Groups</div>
+        <div class="card-sub">4-digit occupations, by share of in-scope postings</div>
+        <div class="card-body"><div id="isco4-chart" style="height:300px"></div></div>
+        <div class="tbl-wrap" id="isco4-table"></div>
+      </div>
     </div>
+  </div>
+
+  <!-- ---- BY REGION ---- -->
+  <div id="cv-region" class="sub-panel">
+    <div class="card card-t" style="margin-bottom:14px">
+      <div class="card-head">Occupational Mix by Region · ISCO-3 &times; State</div>
+      <div class="card-sub">Row-normalised: each row shows how that state's demand splits across ISCO-3 groups (% of the state's postings)</div>
+      <div class="card-body"><div id="cls-region-heat" style="height:420px"></div></div>
+    </div>
+
+    <div class="card card-b" style="margin-bottom:14px">
+      <div class="card-head">Regional Concentration · Where Each Occupation Sits</div>
+      <div class="card-sub">For each ISCO-3 group: the share of its postings found in its top state — a high value means demand is geographically concentrated</div>
+      <div class="card-body"><div id="cls-conc-chart" style="height:300px"></div></div>
+      <div class="tbl-wrap" id="cls-conc-table"></div>
+    </div>
+
     <div class="card card-g">
-      <div class="card-head">ISCO-4 · Unit Groups</div>
-      <div class="card-sub">4-digit occupations, by share of in-scope postings</div>
-      <div class="card-body"><div id="isco4-chart" style="height:300px"></div></div>
-      <div class="tbl-wrap" id="isco4-table"></div>
-    </div>
-  </div>
-</section>
-
-<!-- ====== FEASIBILITY & SOURCES ====== -->
-<section id="tab-feasibility" class="tab-panel" hidden>
-  <div class="note-box">
-    <b>Two evaluation features requested (Jul 2026):</b> (1) a <b>visa-sponsorship feasibility signal</b> mined from posting text to test whether this metric is reliably extractable, and (2) an <b>evaluation of BA and KOFA</b> source timing and granularity for dashboard use.
-  </div>
-
-  <div class="card card-t" style="margin-bottom:14px">
-    <div class="card-head">Visa-Sponsorship Feasibility Signal</div>
-    <div class="card-sub">Share of in-scope postings whose text mentions visa sponsorship / work-permit language. Header filters apply.</div>
-    <div class="card-body" style="padding-top:12px">
-      <div class="kpi-row" style="margin-bottom:14px">
-        <div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="visa-k1"></div></div>
-        <div class="kpi-card"><div class="kpi-accent" style="background:#D4940A"></div><div class="kpi-body" id="visa-k2"></div></div>
-        <div class="kpi-card"><div class="kpi-accent" style="background:#2D9B9A"></div><div class="kpi-body" id="visa-k3"></div></div>
-        <div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="visa-k4"></div></div>
+      <div class="card-head">Classification Profile of a Single Region</div>
+      <div class="card-sub">Full ISCO-3 and ISCO-4 breakdown for one state</div>
+      <div class="card-body" style="padding-top:12px">
+        <div class="filter-box" style="margin-bottom:12px">
+          <label for="cls-state">Region</label>
+          <select id="cls-state" onchange="renderRegionProfile()"></select>
+        </div>
+        <div class="grid-2">
+          <div><div class="card-head" style="padding-left:0">ISCO-3 in this region</div><div class="tbl-wrap" id="cls-rp-isco3"></div></div>
+          <div><div class="card-head" style="padding-left:0">ISCO-4 in this region</div><div class="tbl-wrap" id="cls-rp-isco4"></div></div>
+        </div>
       </div>
-      <div id="visa-verdict" class="insight-box"></div>
-      <div class="grid-2">
-        <div><div class="card-head" style="padding-left:0">Visa mentions by role group</div><div id="visa-by-role" style="height:230px"></div></div>
-        <div><div class="card-head" style="padding-left:0">Visa mentions by employer sector</div><div id="visa-by-sector" style="height:230px"></div></div>
-      </div>
-      <div class="card-head" style="padding-left:0;margin-top:10px">Example matches (audit sample)</div>
-      <div class="tbl-wrap" id="visa-examples"></div>
-      <div class="note-box" id="visa-method" style="margin-top:12px"></div>
     </div>
-  </div>
-
-  <div class="card card-b">
-    <div class="card-head">Source Evaluation · BA Engpassanalyse vs. KOFA (timeline depth &amp; granularity)</div>
-    <div class="card-sub">Whether the two official skilled-labour sources are current and granular enough to drive decisions on this dashboard</div>
-    <div class="card-body" style="padding-top:12px" id="sources-eval"></div>
   </div>
 </section>
 
