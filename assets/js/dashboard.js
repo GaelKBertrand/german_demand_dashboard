@@ -229,6 +229,7 @@ function showTab(id, btn){
   if (id==='regional'){  renderStateBar(rows); renderStateTable(rows); initMap(); }
   if (id==='explorer')   renderExplorer();
   if (id==='classify')   renderClassifications(rows);
+  if (id==='context')    renderMarketContext(rows);
   if (id==='tiers')      renderTiers();
 }
 
@@ -243,6 +244,7 @@ function renderAll(){
   if (APP.activeTab==='regional'){  renderStateBar(rows); renderStateTable(rows); }
   if (APP.activeTab==='explorer')   renderExplorer();
   if (APP.activeTab==='classify')   renderClassifications(rows);
+  if (APP.activeTab==='context')    renderMarketContext(rows);
   if (APP.activeTab==='tiers')      renderTiers();
 }
 
@@ -920,10 +922,125 @@ function classTable(id, arr, total, heads, withParent){
 }
 
 /* ============================================================================
-   TOP TIERS — ranked "top 20 / 30 / 50" analysis, split across five sub-views
+   MARKET CONTEXT — smart connections between top states, top ISCO-4 occupations,
+   and demand shares. Shows the actual structure of the market.
+   ============================================================================ */
+function renderMarketContext(rows){
+  if (!rows.length){ 
+    document.querySelectorAll('#tab-context .card-body, #tab-context .tbl-wrap').forEach(function(el){
+      el.innerHTML = '<p class="chart-empty">There is no data for this selection.</p>';
+    });
+    return;
+  }
+  
+  var total = rows.length;
+  
+  /* Build base data: state -> occupation -> count, and occ -> state -> count */
+  var byStateOcc = {}, byOccState = {}, stateTot = {}, occTot = {};
+  rows.forEach(function(r){
+    if (r[0]<0 || r[4]<0) return;
+    var st = DATA.lookup.states[r[0]], occ = DATA.lookup.isco4[r[4]];
+    if (!st || !occ) return;
+    (byStateOcc[st]=byStateOcc[st]||{})[occ] = ((byStateOcc[st]||{})[occ]||0) + 1;
+    (byOccState[occ]=byOccState[occ]||{})[st] = ((byOccState[occ]||{})[st]||0) + 1;
+    stateTot[st] = (stateTot[st]||0) + 1;
+    occTot[occ] = (occTot[occ]||0) + 1;
+  });
+  
+  var states = Object.keys(stateTot).sort(function(a,b){ return stateTot[b]-stateTot[a]; }).slice(0,12);
+  var occs = Object.keys(occTot).sort(function(a,b){ return occTot[b]-occTot[a]; }).slice(0,10);
+  
+  /* 1. State -> occupation grouped bars */
+  if (!states.length || !occs.length){
+    document.getElementById('ctx-state-occ').innerHTML = '<p class="chart-empty">Not enough data.</p>';
+  } else {
+    var traces = occs.map(function(occ, i){
+      return { type:'bar', name:occ, x:states,
+        y: states.map(function(st){ return (byStateOcc[st]||{})[occ]||0; }),
+        marker:{ color: CAT[i % CAT.length] },
+        customdata: states.map(function(st){ 
+          var n = (byStateOcc[st]||{})[occ]||0;
+          return [st, occ, n]; 
+        }),
+        hovertemplate:'<b>%{customdata[1]}</b><br>%{customdata[0]}: %{customdata[2]:,} postings<extra></extra>'
+      };
+    });
+    drawChart('ctx-state-occ', traces, {
+      barmode:'stack', showlegend:true,
+      xaxis:axC({tickangle:-32}),
+      yaxis:axV({title:{text:'Postings',font:{size:10,color:PAL.soft}}}),
+      legend:{orientation:'h',y:-0.34,font:{size:9,color:PAL.mid}},
+      margin:{l:48,r:8,t:10,b:110}
+    }, { title:'State occupational demand',
+         cols:['State'].concat(occs),
+         rows:states.map(function(st){ return [st].concat(occs.map(function(o){ return (byStateOcc[st]||{})[o]||0; })); }) });
+  }
+  
+  /* 2. Occupation -> state stacked bars */
+  if (!occs.length){
+    document.getElementById('ctx-occ-states').innerHTML = '<p class="chart-empty">Not enough data.</p>';
+  } else {
+    var topStates = states.slice(0,6);
+    var traces = topStates.map(function(st, i){
+      return { type:'bar', name:st, x:occs,
+        y: occs.map(function(occ){ return (byOccState[occ]||{})[st]||0; }),
+        marker:{ color: CAT[i % CAT.length] },
+        hovertemplate:'<b>%{x}</b><br>'+st+': %{y:,} postings<extra></extra>'
+      };
+    });
+    drawChart('ctx-occ-states', traces, {
+      barmode:'stack', showlegend:true,
+      xaxis:axC({tickangle:-32}),
+      yaxis:axV({title:{text:'Postings',font:{size:10,color:PAL.soft}}}),
+      legend:{orientation:'h',y:-0.34,font:{size:9,color:PAL.mid}},
+      margin:{l:48,r:8,t:10,b:110}
+    }, { title:'Occupation geographic distribution',
+         cols:['Occupation'].concat(topStates),
+         rows:occs.map(function(o){ return [o].concat(topStates.map(function(st){ return (byOccState[o]||{})[st]||0; })); }) });
+  }
+  
+  /* 3. State x Occupation heatmap matrix */
+  if (!states.length || !occs.length){
+    document.getElementById('ctx-matrix').innerHTML = '<p class="chart-empty">Not enough data.</p>';
+  } else {
+    var z = states.map(function(st){
+      return occs.map(function(occ){ return (byStateOcc[st]||{})[occ]||0; });
+    });
+    drawChart('ctx-matrix', [{
+      type:'heatmap', z:z, x:occs.map(function(o){ return wrapLabel(o,18); }), y:states,
+      colorscale:SEQ, xgap:2, ygap:2,
+      hovertemplate:'<b>%{y}</b><br>%{x}<br>%{z:,} postings<extra></extra>',
+      colorbar:{title:{text:'Postings',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9},outlinewidth:0}
+    }], {
+      xaxis:{tickangle:-30,tickfont:{size:8.5,color:PAL.mid},fixedrange:true,automargin:true},
+      yaxis:{automargin:true,tickfont:{size:9,color:PAL.mid},fixedrange:true},
+      margin:{l:8,r:8,t:10,b:8}
+    }, { title:'Market matrix: states × occupations',
+         cols:['State'].concat(occs),
+         rows:states.map(function(st,i){ return [st].concat(z[i]); }) });
+  }
+  
+  /* 4. Summary table */
+  var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>State</th><th>Postings</th><th>Share</th>'+
+          '<th>Leading ISCO-4 occupation</th><th>Leading employer sector</th></tr></thead><tbody>';
+  states.forEach(function(st, i){
+    var stOccs = byStateOcc[st] || {};
+    var topOcc = Object.keys(stOccs).sort(function(a,b){ return stOccs[b]-stOccs[a]; })[0] || '—';
+    var stRo = rows.filter(function(r){ return r[0]>=0 && DATA.lookup.states[r[0]]===st; });
+    var leadSec = leadBy(stRo, function(r){ return r[1]>=0 ? DATA.lookup.isic[r[1]] : null; });
+    h += '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(st)+'</b></td>'+
+         '<td class="cnt">'+fmt(stateTot[st])+'</td><td class="num">'+pct(stateTot[st],total).toFixed(1)+'%</td>'+
+         '<td>'+esc(topOcc)+'</td>'+
+         '<td>'+esc(leadSec)+'</td></tr>';
+  });
+  document.getElementById('ctx-summary-table').innerHTML = h + '</tbody></table>';
+}
+
+/* ============================================================================
+   TOP TIERS — ranked "top 10 / 20" analysis, split across five sub-views
    so that no single page has to carry everything.
    ============================================================================ */
-var TIER_N = 20, TIER_VIEW = 'occ';
+var TIER_N = 10, TIER_VIEW = 'occ';
 
 function setTierN(n, btn){
   TIER_N = n;
@@ -942,15 +1059,12 @@ function showTierView(v, btn){
   renderTiers();
 }
 
-/* Rank a map of label -> count into a sorted, cumulative-share array. */
+/* Rank a map of label -> count into a sorted, share array. */
 function rankOf(counts, total){
   var arr = Object.keys(counts).map(function(k){ return { label:k, count:counts[k] }; })
               .sort(function(a,b){ return b.count - a.count; });
-  var run = 0;
   arr.forEach(function(d){
     d.share = total ? +(d.count/total*100).toFixed(2) : 0;
-    run += d.count;
-    d.cum = total ? +(run/total*100).toFixed(1) : 0;
   });
   return arr;
 }
@@ -990,12 +1104,12 @@ function tierOccupations(rows){
   }), { total:total, color:PAL.teal, wrap:30, ofWhat:'in-scope postings',
         title:'Top '+TIER_N+' occupations (ISCO-4)' });
 
-  pareto('tier-occ-pareto', top, total, 'Occupations ranked by share, with cumulative demand');
+  pareto('tier-occ-pareto', top, total, 'Occupations ranked by share');
 
   var byOcc = {};
   rows.forEach(function(r){ var l = r[4]>=0 ? DATA.lookup.isco4[r[4]] : null; if (!l) return; (byOcc[l]=byOcc[l]||[]).push(r); });
   var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>ISCO-4</th><th>Occupation</th><th>Parent ISCO-3</th>'+
-          '<th>Postings</th><th>Share</th><th>Cumulative</th><th>Leading employer sector</th><th>Leading region</th></tr></thead><tbody>';
+          '<th>Postings</th><th>Share</th><th>Leading employer sector</th><th>Leading region</th></tr></thead><tbody>';
   top.forEach(function(d, i){
     var sub = byOcc[d.label] || [];
     var code = (DATA.isco4CodeByName&&DATA.isco4CodeByName[d.label]) || '—';
@@ -1005,7 +1119,6 @@ function tierOccupations(rows){
          '<td><b>'+esc(d.label)+'</b></td>'+
          '<td>'+esc(String(parent||'—'))+' '+esc(isco3Name(parent))+'</td>'+
          '<td class="cnt">'+fmt(d.count)+'</td><td class="num">'+d.share.toFixed(1)+'%</td>'+
-         '<td class="num gld">'+d.cum+'%</td>'+
          '<td>'+esc(leadBy(sub, function(r){ return r[1]>=0 ? DATA.lookup.isic[r[1]] : null; }))+'</td>'+
          '<td>'+esc(leadBy(sub, function(r){ return r[0]>=0 ? DATA.lookup.states[r[0]] : null; }))+'</td></tr>';
   });
@@ -1052,7 +1165,7 @@ function tierRegions(rows){
     (byState[s]=byState[s]||[]).push(r);
   });
   var ranked = rankOf(c, total), top = ranked.slice(0, TIER_N);
-  pareto('tier-region-pareto', top, total, 'Regions ranked by share, with cumulative demand');
+  pareto('tier-region-pareto', top, total, 'Regions ranked by share');
 
   /* grouped bars: leading occupations inside each leading region */
   var topStates = top.slice(0, 8).map(function(d){ return d.label; });
@@ -1084,7 +1197,7 @@ function tierRegions(rows){
              return (byState[st]||[]).filter(function(r){ return r[4]>=0 && DATA.lookup.isco4[r[4]]===occ; }).length; })); }) });
   }
 
-  var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>Region</th><th>Postings</th><th>Share</th><th>Cumulative</th>'+
+  var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>Region</th><th>Postings</th><th>Share</th>'+
           '<th>Leading occupation</th><th>Leading employer sector</th></tr></thead><tbody>';
   top.forEach(function(d, i){
     var sub = byState[d.label] || [];
@@ -1176,14 +1289,13 @@ function tierSectors(rows){
   }
 
   var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>Employer sector</th><th>Postings</th><th>Share</th>'+
-          '<th>Cumulative</th><th>Distinct employers</th><th>Leading occupation</th><th>Leading region</th></tr></thead><tbody>';
+          '<th>Distinct employers</th><th>Leading occupation</th><th>Leading region</th></tr></thead><tbody>';
   top.forEach(function(d, i){
     var sub = bySec[d.label] || [];
     var cos = {};
     sub.forEach(function(r){ var n = DATA.raw.company[_rowToIdx.get(r)]; if (n && n!=='—') cos[n]=1; });
     h += '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(d.label)+'</b></td>'+
          '<td class="cnt">'+fmt(d.count)+'</td><td class="num">'+d.share.toFixed(1)+'%</td>'+
-         '<td class="num gld">'+d.cum+'%</td>'+
          '<td class="num">'+fmt(Object.keys(cos).length)+'</td>'+
          '<td>'+esc(leadBy(sub, function(r){ return r[4]>=0 ? DATA.lookup.isco4[r[4]] : null; }))+'</td>'+
          '<td>'+esc(leadBy(sub, function(r){ return r[0]>=0 ? DATA.lookup.states[r[0]] : null; }))+'</td></tr>';
@@ -1191,33 +1303,24 @@ function tierSectors(rows){
   document.getElementById('tier-sector-table').innerHTML = h + '</tbody></table>';
 }
 
-/* ---- shared Pareto (bars + cumulative line) ------------------------------- */
+/* ---- shared Pareto (bars only, ranked) ------------------------------- */
 function pareto(id, ranked, total, title){
   var el = document.getElementById(id);
   if (!el) return;
   if (!ranked.length){ el.innerHTML = '<p class="chart-empty">There is no data for this selection.</p>'; return; }
   var labels = ranked.map(function(d){ return wrapLabel(d.label, 16); });
-  drawChart(id, [
-    { type:'bar', name:'Share of postings', x:labels, y:ranked.map(function(d){ return d.share; }),
-      marker:{ color:PAL.teal, line:{width:0} },
-      customdata:ranked.map(function(d){ return [d.label, d.count]; }),
-      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]:,} postings<br>%{y:.1f}% of all postings<extra></extra>' },
-    { type:'scatter', name:'Cumulative share', mode:'lines+markers', yaxis:'y2',
-      x:labels, y:ranked.map(function(d){ return d.cum; }),
-      line:{ color:PAL.gold, width:2 }, marker:{ color:PAL.gold, size:4 },
-      customdata:ranked.map(function(d){ return [d.label]; }),
-      hovertemplate:'<b>%{customdata[0]}</b><br>%{y:.1f}% of demand covered up to here<extra></extra>' }
-  ], {
-    showlegend:true,
-    legend:{ orientation:'h', y:-0.42, font:{ size:9.5, color:PAL.mid } },
+  drawChart(id, [{
+    type:'bar', name:'Postings', x:labels, y:ranked.map(function(d){ return d.count; }),
+    marker:{ color:PAL.teal, line:{width:0} },
+    customdata:ranked.map(function(d){ return [d.label, d.count, d.share]; }),
+    hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]:,} postings<br>%{customdata[2]:.1f}% of all<extra></extra>'
+  }], {
+    showlegend:false,
     xaxis:axC({ tickangle:-32, tickfont:{ size:8.5, color:PAL.mid } }),
-    yaxis:axV({ title:{ text:'Share of postings (%)', font:{ size:9.5, color:PAL.soft } } }),
-    yaxis2:{ overlaying:'y', side:'right', range:[0,105], showgrid:false,
-             tickfont:{ size:9, color:PAL.gold }, ticksuffix:'%', fixedrange:true,
-             title:{ text:'Cumulative (%)', font:{ size:9.5, color:PAL.gold } } },
-    margin:{ l:50, r:52, t:10, b:110 }
-  }, { title:title, cols:['Rank','Name','Postings','Share (%)','Cumulative (%)'],
-       rows: ranked.map(function(d,i){ return [i+1, d.label, d.count, d.share, d.cum]; }) });
+    yaxis:axV({ title:{ text:'Postings', font:{ size:9.5, color:PAL.soft } } }),
+    margin:{ l:50, r:12, t:10, b:110 }
+  }, { title:title, cols:['Rank','Name','Postings','Share (%)'],
+       rows: ranked.map(function(d,i){ return [i+1, d.label, d.count, d.share]; }) });
 }
 
 /* ======= STATIC (per-sector) TABS ======================================== */

@@ -46,6 +46,7 @@
 <!-- TAB NAV (Overview/Roles/Regional/Explorer fixed; static tabs appended by JS) -->
 <nav id="tab-nav">
   <button class="tab-btn active" onclick="showTab('overview',this)">Overview</button>
+  <button class="tab-btn" onclick="showTab('context',this)">Market Context</button>
   <button class="tab-btn" onclick="showTab('tiers',this)">Top Tiers</button>
   <button class="tab-btn" onclick="showTab('roles',this)">Role Analysis</button>
   <button class="tab-btn" onclick="showTab('regional',this)">Regional Map</button>
@@ -106,6 +107,38 @@
   </div>
 </section>
 
+<!-- ====== MARKET CONTEXT ====== -->
+<section id="tab-context" class="tab-panel" hidden>
+  <div class="insight-box">
+    <b>Where the demand sits.</b> This view connects the three most important dimensions: which states are hiring, which specific ISCO-4 occupations they want, and what that demand represents in percentage terms. All filters apply.
+  </div>
+
+  <div class="grid-2" style="margin-bottom:14px">
+    <div class="card card-t">
+      <div class="card-head">Top states and their leading occupations</div>
+      <div class="card-sub">The postings in each leading state, grouped by the four-digit ISCO occupations that state is hiring for. Hover any section to read the exact occupation name and posting count.</div>
+      <div class="card-body"><div id="ctx-state-occ" style="height:420px"></div></div>
+    </div>
+    <div class="card card-g">
+      <div class="card-head">Top occupations and where they sit</div>
+      <div class="card-sub">The leading ISCO-4 occupations, with bars showing how the demand for each spreads across states. A short bar means that occupation is concentrated in one or two places; a long bar means it appears nationwide.</div>
+      <div class="card-body"><div id="ctx-occ-states" style="height:420px"></div></div>
+    </div>
+  </div>
+
+  <div class="card card-b" style="margin-bottom:14px">
+    <div class="card-head">Which states need which occupations — the full picture</div>
+    <div class="card-sub">Every state is a row, every leading ISCO-4 occupation is a column. The cell value is the number of postings that state has for that occupation. Darker cells mean more demand; empty cells mean zero postings for that state-occupation pair.</div>
+    <div class="card-body"><div id="ctx-matrix" style="height:520px"></div></div>
+  </div>
+
+  <div class="card card-t">
+    <div class="card-head">Market summary table</div>
+    <div class="card-sub">A condensed view of the entire market: each row is a state, showing its postings, share of national demand, top occupation in that state, and the employer sector that leads there.</div>
+    <div class="tbl-wrap" id="ctx-summary-table"></div>
+  </div>
+</section>
+
 <!-- ====== TOP TIERS ====== -->
 <section id="tab-tiers" class="tab-panel" hidden>
   <div class="insight-box" id="tier-intro"></div>
@@ -113,9 +146,8 @@
   <div class="tier-bar">
     <span class="tier-lbl">Show the top</span>
     <div class="tier-seg" id="tier-n">
-      <button class="active" onclick="setTierN(20,this)">20</button>
-      <button onclick="setTierN(30,this)">30</button>
-      <button onclick="setTierN(50,this)">50</button>
+      <button class="active" onclick="setTierN(10,this)">10</button>
+      <button onclick="setTierN(20,this)">20</button>
     </div>
     <span class="tier-lbl">ranked entries. Every header filter still applies, and each chart can be exported from the button in its top-right corner.</span>
   </div>
