@@ -72,12 +72,9 @@ function wrapLabel(text, width){
   if (cur) lines.push(cur);
   return lines.join('<br>');
 }
-/* Code + wrapped name — use em-space (wider than regular space) for better separation in Plotly SVG. */
+/* Code + wrapped name — only show the name, not the code. */
 function codeLabel(code, name, width){
-  var n = wrapLabel(name, width);
-  if (!code) return n;
-  /* Use Unicode em-space (U+2003) for consistent separation between code and name. */
-  return code + '   ' + n;
+  return wrapLabel(name, width);
 }
 
 /* ============================================================================
