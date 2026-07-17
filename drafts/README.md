@@ -1,4 +1,4 @@
-# GATI Skills-Mobility Dashboards: Germany 2026
+# GATI Skills-Mobility Dashboards
 
 A static, GitHub-Pages-ready site: a landing page that links to one dashboard
 per sector. Each dashboard reads that sector's **clean CSV** at runtime and

@@ -162,10 +162,16 @@
 
   <!-- OCCUPATIONS -->
   <div id="tv-occ" class="sub-panel active">
+<div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="tocc-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="tocc-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="tocc-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="tocc-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Ranked occupations at the four-digit ISCO level</div>
       <div class="card-sub">These are the specific unit groups being advertised, ranked by the number of postings. Each bar is labelled with its official ISCO-4 code so the ranking can be carried straight into a policy or training document.</div>
-      <div class="card-body"><div id="tier-occ-bar" style="height:520px"></div></div>
+      <div class="card-body"><div id="tier-occ-bar"></div></div>
+    </div>
+    <div class="card card-g" style="margin-bottom:14px">
+      <div class="card-head">Who employs each of the leading occupations?</div>
+      <div class="card-sub">The same ranked occupations, split by the employer sectors advertising them. This shows immediately whether an occupation is hired directly by hotels, restaurants or transport firms, or predominantly through staffing agencies.</div>
+      <div class="card-body"><div id="tier-occ-sector"></div></div>
     </div>
     <div class="card card-g" style="margin-bottom:14px">
       <div class="card-head">How concentrated is demand across occupations?</div>
@@ -181,10 +187,16 @@
 
   <!-- JOB TITLES -->
   <div id="tv-title" class="sub-panel">
+<div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="ttit-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="ttit-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="ttit-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="ttit-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Ranked job titles exactly as employers advertised them</div>
       <div class="card-sub">Job titles are the wording candidates actually search for and recognise, whereas ISCO codes are the standardised classification behind them. Comparing the two shows how German employers describe the roles a standardised code covers.</div>
-      <div class="card-body"><div id="tier-title-bar" style="height:520px"></div></div>
+      <div class="card-body"><div id="tier-title-bar"></div></div>
+    </div>
+    <div class="card card-g" style="margin-bottom:14px">
+      <div class="card-head">Which occupations the leading titles belong to</div>
+      <div class="card-sub">All postings carrying the ranked titles above, aggregated by the ISCO-4 occupation they were classified into. This connects employer wording to the standardised classification.</div>
+      <div class="card-body"><div id="tier-title-map"></div></div>
     </div>
     <div class="card card-b">
       <div class="card-head">Full ranked table of advertised job titles</div>
@@ -195,6 +207,7 @@
 
   <!-- REGIONS -->
   <div id="tv-region" class="sub-panel">
+<div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="treg-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="treg-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="treg-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="treg-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Regions ranked by posting volume</div>
       <div class="card-sub">Every region carrying location data, ranked by how many in-scope postings it holds, with the running cumulative share shown as a line so you can see how much of national demand the leading regions represent.</div>
@@ -214,10 +227,11 @@
 
   <!-- EMPLOYERS -->
   <div id="tv-employer" class="sub-panel">
+<div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="temp-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="temp-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="temp-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="temp-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Employers ranked by number of postings</div>
       <div class="card-sub">Named organisations advertising the most roles, coloured by the employer sector they belong to. These are the concrete counterparties a placement partnership would need to approach.</div>
-      <div class="card-body"><div id="tier-emp-bar" style="height:520px"></div></div>
+      <div class="card-body"><div id="tier-emp-bar"></div></div>
     </div>
     <div class="card card-b">
       <div class="card-head">Full ranked table of employers</div>
@@ -228,10 +242,11 @@
 
   <!-- SECTORS -->
   <div id="tv-sector" class="sub-panel">
+<div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="tsec-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="tsec-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="tsec-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="tsec-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Employer sectors ranked by posting volume</div>
       <div class="card-sub">Which kinds of organisation are generating demand, ranked by their number of in-scope postings and shown with their share of the sector total.</div>
-      <div class="card-body"><div id="tier-sector-bar" style="height:340px"></div></div>
+      <div class="card-body"><div id="tier-sector-bar"></div></div>
     </div>
     <div class="card card-g" style="margin-bottom:14px">
       <div class="card-head">Where each employer sector recruits</div>
@@ -280,7 +295,7 @@
     This is the raw posting-level data behind every chart in the dashboard, and all of the header filters for state, employer type and genuine employers apply to it. Each row is a single job posting. Long description, requirement and benefit text is shortened to three lines to keep the table readable, and the complete text appears when you hover over the cell; the original listing is always one click away through the link in the final column.
   </div>
   <div class="card card-t" style="margin-bottom:14px">
-    <div class="card-head">Role Group Summary (ISCO-3 Level)</div>
+    <div class="card-head">Occupation Summary (ISCO-4 Level)</div>
     <div class="card-sub">An aggregate view giving the posting count, the share open to part-time work, the leading employer sector and the leading state for each occupational group.</div>
     <div class="tbl-wrap" id="explorer-table"></div>
   </div>
@@ -312,34 +327,37 @@
 
   <!-- ---- NATIONAL ---- -->
   <div id="cv-national" class="sub-panel active">
-    <div class="grid-2">
-      <div class="card card-t">
-        <div class="card-head">ISCO-3 · Minor Groups</div>
-        <div class="card-sub">The three-digit ISCO-08 minor groups, ranked by their share of in-scope postings. Each bar carries its official code so the figure can be quoted directly.</div>
-        <div class="card-body"><div id="isco3-chart" style="height:300px"></div></div>
-        <div class="tbl-wrap" id="isco3-table"></div>
-      </div>
-      <div class="card card-g">
-        <div class="card-head">ISCO-4 · Unit Groups</div>
-        <div class="card-sub">The four-digit ISCO-08 unit groups, ranked by their share of in-scope postings. This is the most specific level the classifier assigns.</div>
-        <div class="card-body"><div id="isco4-chart" style="height:300px"></div></div>
-        <div class="tbl-wrap" id="isco4-table"></div>
-      </div>
+    <div class="kpi-row" style="margin-bottom:14px">
+      <div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="cls-k1"></div></div>
+      <div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="cls-k2"></div></div>
+      <div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="cls-k3"></div></div>
+      <div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="cls-k4"></div></div>
+    </div>
+    <div class="card card-g" style="margin-bottom:14px">
+      <div class="card-head">ISCO-4 · Unit Groups</div>
+      <div class="card-sub">The four-digit ISCO-08 unit groups, ranked by their share of in-scope postings. This is the most specific level the classifier assigns and the primary level of this analysis.</div>
+      <div class="card-body"><div id="isco4-chart"></div></div>
+      <div class="tbl-wrap" id="isco4-table"></div>
+    </div>
+    <div class="card card-t">
+      <div class="card-head">ISCO-3 · Minor Groups</div>
+      <div class="card-sub">The three-digit ISCO-08 minor groups that the unit groups above roll up into. Each bar carries its official code so the figure can be quoted directly.</div>
+      <div class="card-body"><div id="isco3-chart"></div></div>
+      <div class="tbl-wrap" id="isco3-table"></div>
     </div>
   </div>
 
   <!-- ---- BY REGION ---- -->
   <div id="cv-region" class="sub-panel">
     <div class="card card-t" style="margin-bottom:14px">
-      <div class="card-head">Occupational Mix by Region · ISCO-3 &times; State</div>
-      <div class="card-sub">Each row is normalised to its own state, so the figures show how that state divides its demand across occupational groups rather than how large the state is.</div>
-      <div class="card-body"><div id="cls-region-heat" style="height:420px"></div></div>
+      <div class="card-head">Occupational Demand by Region · ISCO-4 Level</div>
+      <div class="card-sub">Every federal state with its posting volume, national share, and the three ISCO-4 occupations it demands most, each with its share of that state's own postings.</div>
+      <div class="tbl-wrap" id="cls-region-table"></div>
     </div>
 
     <div class="card card-b" style="margin-bottom:14px">
       <div class="card-head">Regional Concentration · Where Each Occupation Sits</div>
-      <div class="card-sub">For every occupational group this shows the share of its postings sitting in its single largest state. A high value means the demand for that occupation is geographically concentrated rather than spread nationally.</div>
-      <div class="card-body"><div id="cls-conc-chart" style="height:300px"></div></div>
+      <div class="card-sub">For each leading ISCO-4 occupation: how many states carry it, which state leads, and what share of the occupation's postings that single state holds. A high share means demand is geographically concentrated rather than spread nationally.</div>
       <div class="tbl-wrap" id="cls-conc-table"></div>
     </div>
 
@@ -352,8 +370,8 @@
           <select id="cls-state" onchange="renderRegionProfile()"></select>
         </div>
         <div class="grid-2">
-          <div><div class="card-head" style="padding-left:0">ISCO-3 in this region</div><div class="tbl-wrap" id="cls-rp-isco3"></div></div>
           <div><div class="card-head" style="padding-left:0">ISCO-4 in this region</div><div class="tbl-wrap" id="cls-rp-isco4"></div></div>
+          <div><div class="card-head" style="padding-left:0">ISCO-3 in this region</div><div class="tbl-wrap" id="cls-rp-isco3"></div></div>
         </div>
       </div>
     </div>
