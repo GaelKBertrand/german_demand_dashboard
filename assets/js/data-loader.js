@@ -68,6 +68,113 @@ function sniffDelimiter(text) {
   return n > 0 ? best : ",";
 }
 
+
+/* ============================================================================
+   DEFENSIVE LAYER — the dashboard NEVER shows raw codes or German noise, even
+   if a raw (unprocessed) CSV is deployed. Official ISCO-08 unit-group titles,
+   keyed by 4-digit code; fallback chain: CSV name -> this map -> ISCO-3 name.
+   ============================================================================ */
+var ISCO4_OFFICIAL = {
+ 1120:"Managing Directors and Chief Executives",1211:"Finance Managers",1212:"Human Resource Managers",
+ 1213:"Policy and Planning Managers",1219:"Business Services and Administration Managers n.e.c.",
+ 1221:"Sales and Marketing Managers",1222:"Advertising and Public Relations Managers",1223:"Research and Development Managers",
+ 1321:"Manufacturing Managers",1323:"Construction Managers",1324:"Supply, Distribution and Related Managers",
+ 1330:"ICT Service Managers",1411:"Hotel Managers",1412:"Restaurant Managers",1420:"Retail and Wholesale Trade Managers",
+ 1431:"Sports, Recreation and Cultural Centre Managers",1439:"Services Managers n.e.c.",
+ 2141:"Industrial and Production Engineers",2142:"Civil Engineers",2143:"Environmental Engineers",
+ 2144:"Mechanical Engineers",2145:"Chemical Engineers",2149:"Engineering Professionals n.e.c.",
+ 2161:"Building Architects",2166:"Graphic and Multimedia Designers",2221:"Nursing Professionals",
+ 2263:"Environmental and Occupational Health Professionals",2264:"Physiotherapists",
+ 2265:"Dieticians and Nutritionists",2269:"Health Professionals n.e.c.",2310:"University and Higher Education Teachers",
+ 2320:"Vocational Education Teachers",2341:"Primary School Teachers",2411:"Accountants",
+ 2421:"Management and Organization Analysts",2422:"Policy Administration Professionals",
+ 2423:"Personnel and Careers Professionals",2424:"Training and Staff Development Professionals",
+ 2431:"Advertising and Marketing Professionals",2432:"Public Relations Professionals",
+ 2433:"Technical and Medical Sales Professionals",2511:"Systems Analysts",2512:"Software Developers",
+ 2513:"Web and Multimedia Developers",2514:"Applications Programmers",2519:"Software and Applications Developers n.e.c.",
+ 2521:"Database Designers and Administrators",2522:"Systems Administrators",2529:"Database and Network Professionals n.e.c.",
+ 2635:"Social Work and Counselling Professionals",2642:"Journalists",3112:"Civil Engineering Technicians",
+ 3115:"Mechanical Engineering Technicians",3119:"Physical and Engineering Science Technicians n.e.c.",
+ 3122:"Manufacturing Supervisors",3123:"Construction Supervisors",3132:"Incinerator and Water Treatment Plant Operators",
+ 3212:"Medical and Pathology Laboratory Technicians",3240:"Veterinary Technicians and Assistants",
+ 3251:"Dental Assistants and Therapists",3253:"Community Health Workers",3255:"Physiotherapy Technicians and Assistants",
+ 3256:"Medical Assistants",3257:"Environmental and Occupational Health Inspectors",3258:"Ambulance Workers",
+ 3259:"Health Associate Professionals n.e.c.",3313:"Accounting Associate Professionals",
+ 3322:"Commercial Sales Representatives",3323:"Buyers",3332:"Conference and Event Planners",
+ 3333:"Employment Agents and Contractors",3334:"Real Estate Agents and Property Managers",
+ 3339:"Business Services Agents n.e.c.",3341:"Office Supervisors",3343:"Administrative and Executive Secretaries",
+ 3344:"Medical Secretaries",3359:"Regulatory Government Associate Professionals n.e.c.",
+ 3412:"Social Work Associate Professionals",3434:"Chefs",3435:"Other Artistic and Cultural Associate Professionals",
+ 4110:"General Office Clerks",4120:"Secretaries (General)",4224:"Hotel Receptionists",4225:"Enquiry Clerks",
+ 4226:"Receptionists (General)",4227:"Survey and Market Research Interviewers",4229:"Client Information Workers n.e.c.",
+ 4311:"Accounting and Bookkeeping Clerks",4321:"Stock Clerks",4323:"Transport Clerks",
+ 5120:"Cooks",5131:"Waiters",5132:"Bartenders",5151:"Cleaning and Housekeeping Supervisors",
+ 5152:"Domestic Housekeepers",5153:"Building Caretakers",5162:"Companions and Valets",5164:"Pet Groomers and Animal Care Workers",
+ 5169:"Personal Services Workers n.e.c.",5223:"Shop Sales Assistants",5230:"Cashiers and Ticket Clerks",
+ 5245:"Service Station Attendants",5246:"Food Service Counter Attendants",5249:"Sales Workers n.e.c.",
+ 5311:"Child Care Workers",5321:"Health Care Assistants",5322:"Home-based Personal Care Workers",
+ 5329:"Personal Care Workers in Health Services n.e.c.",5414:"Security Guards",
+ 7112:"Bricklayers and Related Workers",7115:"Carpenters and Joiners",7126:"Plumbers and Pipe Fitters",
+ 7127:"Air Conditioning and Refrigeration Mechanics",7231:"Motor Vehicle Mechanics and Repairers",
+ 7233:"Agricultural and Industrial Machinery Mechanics and Repairers",7411:"Building and Related Electricians",
+ 7412:"Electrical Mechanics and Fitters",7512:"Bakers, Pastry-cooks and Confectionery Makers",
+ 7513:"Dairy Products Makers",7514:"Fruit, Vegetable and Related Preservers",7515:"Food and Beverage Tasters and Graders",
+ 8160:"Food and Related Products Machine Operators",8189:"Stationary Plant and Machine Operators n.e.c.",
+ 8211:"Mechanical Machinery Assemblers",8322:"Car, Taxi and Van Drivers",8331:"Bus and Tram Drivers",
+ 8332:"Heavy Truck and Lorry Drivers",8341:"Mobile Farm and Forestry Plant Operators",
+ 8342:"Earthmoving and Related Plant Operators",8343:"Crane, Hoist and Related Plant Operators",
+ 8344:"Lifting Truck Operators",9112:"Cleaners and Helpers in Offices, Hotels and Other Establishments",
+ 9121:"Hand Launderers and Pressers",9214:"Garden and Horticultural Labourers",9312:"Civil Engineering Labourers",
+ 9313:"Building Construction Labourers",9321:"Hand Packers",9329:"Manufacturing Labourers n.e.c.",
+ 9333:"Freight Handlers",9334:"Shelf Fillers",9412:"Kitchen Helpers",9611:"Garbage and Recycling Collectors",
+ 9621:"Messengers, Package Deliverers and Luggage Porters",9622:"Odd Job Persons",9629:"Elementary Workers n.e.c."
+};
+
+/* Strip (m/w/d)-style markers, translate the most common German role words,
+   and drop trailing ", City" suffixes from advertised titles. */
+var _MARK_RX = /\(\s*(?:m|w|f|d|x|gn|div|all\s*genders?|human)(?:\s*[\/|,]\s*(?:m|w|f|d|x|gn|div))*\s*\)|\bm\/w\/d\b|\bw\/m\/d\b/gi;
+var _DE_WORDS = [
+ ["Berufskraftfahrer(?:\\/?in|in)?","Professional Driver"],["Kraftfahrer(?:\\/?in|in)?","Driver"],
+ ["LKW[- ]?Fahrer(?:\\/?in|in)?","Truck Driver"],["Lkw[- ]?Fahrer(?:\\/?in|in)?","Truck Driver"],
+ ["Paketzusteller(?:\\/?in|in)?","Parcel Delivery Driver"],["Zusteller(?:\\/?in|in)?","Delivery Driver"],
+ ["Kurierfahrer(?:\\/?in|in)?","Courier Driver"],["(?:Gabel)?[Ss]taplerfahrer(?:\\/?in|in)?","Forklift Driver"],
+ ["Busfahrer(?:\\/?in|in)?","Bus Driver"],["Fahrer(?:\\/?in|in)?","Driver"],
+ ["Lagerhelfer(?:\\/?in|in)?","Warehouse Assistant"],["Lagermitarbeiter(?:\\/?in|in)?","Warehouse Employee"],
+ ["Lagerist(?:\\/?in|in)?","Warehouse Worker"],["Kommissionierer(?:\\/?in|in)?","Order Picker"],
+ ["K\u00fcchenhilfe","Kitchen Assistant"],["K\u00fcchenchef(?:\\/?in|in)?","Head Chef"],
+ ["Koch\\/K\u00f6chin","Cook"],["K\u00f6chin","Cook"],["Koch","Cook"],
+ ["Konditor(?:\\/?in|in)?","Pastry Chef"],["B\u00e4cker(?:\\/?in|in)?","Baker"],
+ ["Metzger(?:\\/?in|in)?","Butcher"],["Fleischer(?:\\/?in|in)?","Butcher"],
+ ["Kellner(?:\\/?in|in)?","Waiter"],["Servicekraft","Service Staff"],["Servicemitarbeiter(?:\\/?in|in)?","Service Employee"],
+ ["Restaurantleiter(?:\\/?in|in)?","Restaurant Manager"],["Restaurantfachmann(?:\\/-?frau)?","Restaurant Specialist"],
+ ["Hotelfachmann(?:\\/-?frau)?","Hotel Specialist"],["Hotelfachfrau","Hotel Specialist"],
+ ["Empfangsmitarbeiter(?:\\/?in|in)?","Receptionist"],["Rezeptionist(?:\\/?in|in)?","Receptionist"],["Rezeption","Reception"],
+ ["Reinigungskraft","Cleaner"],["Sp\u00fcler(?:\\/?in|in)?","Dishwasher"],["Sp\u00fclkraft","Dishwasher"],
+ ["Verk\u00e4ufer(?:\\/?in|in)?","Sales Assistant"],["Mitarbeiter(?:\\/?in|in)?","Employee"],
+ ["Fachkraft f\u00fcr Lagerlogistik","Warehouse Logistics Specialist"],["Fachkraft","Specialist"],
+ ["Auszubildende(?:\\/?r|r)?","Apprentice"],["Ausbildung (?:zur|zum|als)","Apprenticeship as"],["Ausbildung","Apprenticeship"],
+ ["Aushilfe","Temporary Staff"],["Quereinsteiger(?:\\/?in|in)?","Career Changer"],
+ [" und "," and "],[" f\u00fcr "," for "],[" mit "," with "]
+].map(function(p){ return [new RegExp("(^|[^A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])(?:"+p[0]+")(?![A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df])","g"), p[1]]; });
+
+function cleanTitleJS(t, city, state){
+  if (!t) return t;
+  var s2 = String(t).replace(_MARK_RX, " ");
+  _DE_WORDS.forEach(function(p){ s2 = s2.replace(p[0], function(_, pre){ return (pre||"") + p[1]; }); });
+  s2 = s2.replace(/\s+/g, " ").replace(/^[\s\-\u2013,;]+|[\s\-\u2013,;]+$/g, "");
+  for (var i = 0; i < 3; i++){
+    var m = s2.match(/,\s*([^,]+)$/);
+    if (!m) break;
+    var tail = m[1].trim().toLowerCase();
+    var anchors = [city, state].filter(Boolean).map(function(x){ return String(x).toLowerCase(); });
+    var hit = anchors.some(function(c){ return tail === c || tail.indexOf(c) === 0 || c.indexOf(tail) === 0; }) ||
+              /^(bei|near|region|raum)\b/.test(tail);
+    if (hit) s2 = s2.slice(0, m.index).replace(/[\s\-\u2013,;]+$/,"");
+    else break;
+  }
+  return s2 || t;
+}
+
 /* ---- typed load error carrying diagnostics for the UI --------------------- */
 function LoadError(kind, message, diag) {
   var e = new Error(message); e.kind = kind; e.diag = diag || {}; return e;
@@ -107,7 +214,7 @@ function loadSectorData(sectorId) {
     if (!built.rows.length) {
       /* Parsed fine but nothing survived the in-scope/classified filter — tell
          the user exactly which required columns are missing (if any).          */
-      var need = ["ISCO_4", "ISCO_3", "ISCO_2", "ISCO_4_name", "State", "Employer_Category"];
+      var need = ["ISCO_4", "ISCO_3", "ISCO_2", "State"];
       var have = headers.map(keyNorm);
       var missing = need.filter(function (c) { return have.indexOf(keyNorm(c)) === -1; });
       throw LoadError("empty",
@@ -151,12 +258,20 @@ function buildDATA(rawRows, diag) {
       isco2:    parseInt(pick(row, ["ISCO_2", "ISCO2"]), 10),
       isco3:    parseInt(pick(row, ["ISCO_3", "ISCO3"]), 10),
       isco4code:parseInt(isco4code, 10),
-      isco4nm:  pick(row, ["ISCO_4_name", "ISCO_Occupation_Title", "ISCO_4_Name", "Occupation"]) || ("ISCO " + isco4code),
+      isco4nm:  (function(){
+                   var nm = pick(row, ["ISCO_4_name", "ISCO_Occupation_Title", "ISCO_4_Name", "Occupation"]);
+                   if (nm && !/^ISCO\s*\d+/i.test(nm) && !/^\d{3,4}(\.0)?$/.test(nm)) return nm;
+                   var c4 = parseInt(isco4code, 10);
+                   return ISCO4_OFFICIAL[c4] ||
+                          pick(row, ["ISCO_3_name", "ISCO_3_Name"]) ||
+                          ("ISCO " + c4);
+                 })(),
       emp:      pick(row, ["Employment_type", "Employment_Type", "Contract_Type"]) || "Not specified",
       date:     d,
       dateStr:  dRaw || "",
       company:  pick(row, ["Company_Name", "Company", "Employer"]) || "—",
-      title:    pick(row, ["Job_Title", "Title"]) || "—",
+      title:    cleanTitleJS(pick(row, ["Job_Title", "Title"]),
+                             pick(row, ["City"]), pick(row, ["State", "Bundesland", "Region"])) || "\u2014",
       empCat:   pick(row, ["Employer_Category", "Employer_Type"]) || "",
       salary:   pick(row, ["Salary", "Pay", "Compensation"]) || "",
       desc:     desc || "",

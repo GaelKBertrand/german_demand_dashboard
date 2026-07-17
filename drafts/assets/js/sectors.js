@@ -29,7 +29,10 @@ const SECTORS = [
     tagline: "Hotels, kitchens, service & events",
     scope: "ISCO 14 · 51 · 91 · 94", accent: "#C4880C",
     source: "StepStone Germany", kpiNoun: "Hospitality",
-    staticTabs: [],
+    staticTabs: [
+      { id: "about", label: "About & Methods",        file: "content/hospitality-about.html" },
+      { id: "quals", label: "Qualifications & Skills", file: "content/hospitality-quals.html" }
+    ],
     icon: "M4 3h16v2H4zm2 4h12l-1 13H7L6 7zm4 3v7m4-7v7"
   },
   {
@@ -45,7 +48,10 @@ const SECTORS = [
     tagline: "Drivers, warehouse, dispatch & supply chain",
     scope: "ISCO 83 · 93 · 43", accent: "#3B6E8F",
     source: "StepStone Germany", kpiNoun: "Logistics",
-    staticTabs: [],
+    staticTabs: [
+      { id: "about", label: "About & Methods",        file: "content/logistics-about.html" },
+      { id: "quals", label: "Qualifications & Skills", file: "content/logistics-quals.html" }
+    ],
     icon: "M3 7h11v8H3zM14 10h4l3 3v2h-7zM7 19a2 2 0 100-4 2 2 0 000 4zm10 0a2 2 0 100-4 2 2 0 000 4z"
   }
 ];
@@ -78,7 +84,19 @@ function regionFor(sector) { return REGIONS[sector.region || "germany"] || REGIO
 const ISIC_COLORS = {
   "Residential & Long-term Care":"#1A7B7A","Medical & Dental Practice":"#D4940A",
   "Other Health Services & Industry":"#2D9B9A","Hospitals & Acute Care":"#E8A820",
-  "Staffing & Recruitment":"#0F5B5A","Mental Health & Rehabilitation":"#B8D9D9"
+  "Staffing & Recruitment":"#0F5B5A","Mental Health & Rehabilitation":"#B8D9D9",
+  /* hospitality (derived) */
+  "Hotels & Accommodation":"#1A7B7A","Restaurants, Cafés & Bars":"#D4940A",
+  "Bakeries, Butchers & Food Retail":"#E8A820","Contract & Institutional Catering":"#2D9B9A",
+  "Care, Clinic & Community Kitchens":"#4AABAA","Events, Leisure & Travel":"#8A6FBF",
+  "System Catering & Fast Food":"#C4626A","Independent Gastronomy & Other":"#5B7C8D",
+  "Staffing Agencies & Other":"#0F5B5A",
+  /* logistics (derived) */
+  "Freight Forwarding & Road Transport":"#1A7B7A","Parcel, Post & Last-mile Delivery":"#D4940A",
+  "Warehousing & Fulfilment":"#2D9B9A","Public & Passenger Transport":"#8A6FBF",
+  "Waste & Environmental Services":"#6B8E23","Construction & Industrial Transport":"#B8860B",
+  "Retail & Wholesale Distribution":"#E8A820","Removals & Courier Services":"#C4626A",
+  "Other Logistics Employers":"#5B7C8D"
 };
 
 function csvUrlFor(sector) { return CSV_BASE + sector.csv; }

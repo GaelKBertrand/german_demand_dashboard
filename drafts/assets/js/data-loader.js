@@ -147,7 +147,7 @@ function buildDATA(rawRows, diag) {
 
     recs.push({
       state:    pick(row, ["State", "Bundesland", "Region"]) || "",
-      isic:     pick(row, ["Employer_Category", "Employer_Type", "ISIC"]) || "Not specified",
+      isic:     pick(row, ["Employer_Sector", "Employer_Category", "Employer_Type", "ISIC"]) || "Not specified",
       isco2:    parseInt(pick(row, ["ISCO_2", "ISCO2"]), 10),
       isco3:    parseInt(pick(row, ["ISCO_3", "ISCO3"]), 10),
       isco4code:parseInt(isco4code, 10),

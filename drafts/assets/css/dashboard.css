@@ -163,3 +163,6 @@ body{font-family:'Outfit',sans-serif;background:#F2F6F6;color:#0F2E2E;font-size:
   .hdr-filters{width:100%}
   .kpi-row{grid-template-columns:1fr 1fr}
 }
+
+/* muted inline annotation used in classification region tables */
+.data-tbl td .soft{color:var(--ink-soft,#7A8C8C);font-size:11px;white-space:nowrap}

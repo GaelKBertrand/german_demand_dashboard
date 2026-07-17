@@ -1,0 +1,42 @@
+
+<div class="insight-box" style="margin-bottom:16px">
+  <b>What this dashboard covers.</b> Job postings scraped from StepStone Germany for the logistics and drivers labour market: truck and delivery driving, warehouse and freight handling, forklift operation, and passenger transport. Every posting is classified to the ISCO-08 standard at the 3-digit and 4-digit level, geocoded to a federal state, and mapped to a derived employer sector. All charts in the other tabs respond to the header filters.
+</div>
+
+<div class="grid-2">
+  <div class="card card-t">
+    <div class="card-head">Logistics Role Categories (ISCO-08)</div>
+    <div>
+      <div class="gloss-block"><span class="gloss-code">8332</span><span class="gloss-name">Heavy Truck and Lorry Drivers</span><div class="gloss-desc">Professional drivers (Berufskraftfahrer) with C/CE licences. The dominant occupation in this dataset by a wide margin, mirroring Germany's structural driver shortage of an estimated 70,000–100,000 drivers.</div></div>
+      <div class="gloss-block"><span class="gloss-code">9333</span><span class="gloss-name">Freight Handlers</span><div class="gloss-desc">Loading, unloading, sorting and moving goods in warehouses, hubs and depots. Second-largest group; low formal entry barriers and high seasonal elasticity.</div></div>
+      <div class="gloss-block"><span class="gloss-code">8344</span><span class="gloss-name">Lifting Truck Operators</span><div class="gloss-desc">Forklift and industrial-truck operators (Staplerfahrer). Requires the German forklift licence (Staplerschein), a short certifiable qualification.</div></div>
+      <div class="gloss-block"><span class="gloss-code">8322</span><span class="gloss-name">Car, Taxi and Van Drivers</span><div class="gloss-desc">Van-based delivery and passenger driving with a class-B licence, concentrated in last-mile parcel work.</div></div>
+      <div class="gloss-block"><span class="gloss-code">8331</span><span class="gloss-name">Bus and Tram Drivers</span><div class="gloss-desc">Public and coach transport (class D). Acute shortage occupation in German municipal transport; appears in this dataset inside the Public &amp; Passenger Transport sector.</div></div>
+    </div>
+  </div>
+  <div>
+    <div class="card card-g" style="margin-bottom:14px">
+      <div class="card-head">Employer Sectors (derived)</div>
+      <div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">FFW</span><span class="gloss-name">Freight Forwarding &amp; Road Transport</span><div class="gloss-desc">Speditionen, haulage and transport firms — the largest sector in the dataset.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">PPL</span><span class="gloss-name">Parcel, Post &amp; Last-mile Delivery</span><div class="gloss-desc">Parcel networks, postal services and delivery platforms.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">WHF</span><span class="gloss-name">Warehousing &amp; Fulfilment</span><div class="gloss-desc">Warehouse operators, distribution centres and e-commerce fulfilment.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">PPT</span><span class="gloss-name">Public &amp; Passenger Transport</span><div class="gloss-desc">Municipal transport operators, bus companies and passenger services.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">WES</span><span class="gloss-name">Waste &amp; Environmental Services</span><div class="gloss-desc">Waste collection and recycling logistics.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">CIT</span><span class="gloss-name">Construction &amp; Industrial Transport</span><div class="gloss-desc">Building-materials haulage, tippers and crane transport.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">STF</span><span class="gloss-name">Staffing Agencies &amp; Other</span><div class="gloss-desc">Temporary-work and recruitment firms advertising driver and warehouse roles for end clients.</div></div>
+        <div class="gloss-block"><span class="gloss-code gloss-gold">OTH</span><span class="gloss-name">Other Logistics Employers</span><div class="gloss-desc">Companies without a recognisable sector keyword — largely small hauliers and mixed businesses.</div></div>
+      </div>
+    </div>
+    <div class="card card-b">
+      <div class="card-head">Methods &amp; Caveats</div>
+      <div style="font-size:12px;line-height:1.9;padding:0 14px 14px;color:#334">
+        <b>Source.</b> StepStone.de listings for the logistics &amp; drivers scope. StepStone skews toward formal employers; small owner-driver operations recruiting informally are under-represented.<br>
+        <b>Classification.</b> Machine classification to ISCO-08; ISCO-4 names follow the official ILO unit-group titles. Roughly one in five scraped postings could not be assigned a confident ISCO-4 code and is excluded from classified counts — the header shows classified volume.<br>
+        <b>Employer sectors.</b> Derived from company names and posting context by keyword rules; agency postings are assigned to <i>Staffing Agencies &amp; Other</i> regardless of end client.<br>
+        <b>Job titles.</b> Shown after cleaning: (m/w/d)-style markers and trailing city names removed, common German role words translated. Some German proper nouns remain.<br>
+        <b>Counts.</b> Figures count postings, not vacancies or hires; one posting can represent several openings, and driver postings are frequently multi-hire.
+      </div>
+    </div>
+  </div>
+</div>
