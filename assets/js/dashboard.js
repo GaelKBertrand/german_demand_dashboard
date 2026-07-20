@@ -385,42 +385,65 @@ function renderIsicBar(rows){
 
 /* ======= CROSS-TAB ======================================================== */
 function renderCrossTab(rows){
-  var grps = DATA.roleGroups.map(function(g){ return { code:g.code, idx:g.idx, name:wrapName(g.name) }; });
-  var isicList = DATA.lookup.isic.slice(0,8);
+  /* One bar per leading ISCO-4 occupation; segments show which categories the
+     postings come from, as % of that occupation's postings (each bar = 100%). */
+  var grps = DATA.roleGroups.map(function(g){ return { code:g.code, idx:g.idx, name:g.name }; });
   var matrix={}, totals={};
-  grps.forEach(function(g){ totals[g.code]=0; });
+  grps.forEach(function(g){ matrix[g.code]={}; totals[g.code]=0; });
+  var catCount={};
   rows.forEach(function(r){
     if(r[1]<0) return;
     var g=grps.find(function(x){return x.idx===r[4];}); if(!g) return;
-    var isic=DATA.lookup.isic[r[1]];
-    if(!matrix[isic]) matrix[isic]={};
-    matrix[isic][g.code]=(matrix[isic][g.code]||0)+1;
+    var cat=DATA.lookup.isic[r[1]];
+    matrix[g.code][cat]=(matrix[g.code][cat]||0)+1;
     totals[g.code]=(totals[g.code]||0)+1;
+    catCount[cat]=(catCount[cat]||0)+1;
   });
-  var zData=isicList.map(function(isic){ return grps.map(function(g){
-    return +(((matrix[isic]?matrix[isic][g.code]||0:0)/Math.max(totals[g.code],1))*100).toFixed(1); }); });
-  var textData=isicList.map(function(isic){ return grps.map(function(g){
-    return (((matrix[isic]?matrix[isic][g.code]||0:0)/Math.max(totals[g.code],1))*100).toFixed(0)+'%'; }); });
-  var zMax=Math.max.apply(null, zData.reduce(function(a,b){return a.concat(b);},[]).concat([1]));
-  var annotations=[];
-  isicList.forEach(function(isic,yi){ grps.forEach(function(g,xi){
-    var v=zData[yi][xi]; var txtCol = v/zMax>0.45 ? '#fff' : '#0F2E2E';
-    annotations.push({x:g.name,y:isic,text:textData[yi][xi],xref:'x',yref:'y',showarrow:false,
-      font:{size:10,color:txtCol,family:'Outfit'}});
-  }); });
-  drawChart('chart-cross',[{type:'heatmap',
-    x:grps.map(function(g){return g.name;}), y:isicList, z:zData,
-    colorscale:SEQ,
-    showscale:true,
-    colorbar:{thickness:10,len:0.85,tickfont:{size:9,family:'Outfit'},ticksuffix:'%',outlinewidth:0,
-              title:{text:'Share',font:{size:9}}},
-    hovertemplate:'<b>%{y}</b><br>%{x}<br>%{z:.1f}% of this group\'s postings<extra></extra>', xgap:4, ygap:4}],
-    {xaxis:{showgrid:false,tickfont:{size:9.5,color:PAL.mid},fixedrange:true,tickangle:0,automargin:true},
-     yaxis:{showgrid:false,automargin:true,tickfont:{size:10,color:PAL.mid},fixedrange:true},
-     annotations:annotations, margin:{l:8,r:60,t:16,b:36}},
-    {title:catC()+' by workforce group',
-     cols:[catC()].concat(grps.map(function(g){return stripTags(g.name);})),
-     rows:isicList.map(function(isic,yi){ return [isic].concat(zData[yi]); })});
+  var cats=Object.keys(catCount).sort(function(a,b){ return catCount[b]-catCount[a]; }).slice(0,7);
+
+  var el=document.getElementById('chart-cross');
+  if(el) el.style.height=Math.max(280, grps.length*46 + 150)+'px';
+  var order=grps.slice().reverse();
+  var yLab=order.map(function(g){ return wrapLabel(g.name, 26); });
+  var HOVER={bgcolor:'#111827', bordercolor:'#111827', font:{color:'#FFFFFF', size:12, family:'Outfit'}};
+
+  function pctOf(g,cat){ var n=matrix[g.code][cat]||0; return totals[g.code]?+(n/totals[g.code]*100).toFixed(1):0; }
+  function cntOf(g,cat){ return matrix[g.code][cat]||0; }
+
+  var traces=cats.map(function(cat,i){
+    return { type:'bar', orientation:'h', name:cat, y:yLab,
+      x: order.map(function(g){ return pctOf(g,cat); }),
+      customdata: order.map(function(g){ return [g.name, cat, cntOf(g,cat), pctOf(g,cat)]; }),
+      marker:{ color: CAT[i % CAT.length] },
+      hoverlabel: HOVER,
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>' };
+  });
+  traces.push({ type:'bar', orientation:'h', name:'Other', y:yLab,
+    x: order.map(function(g){
+         var known=cats.reduce(function(a,c){return a+cntOf(g,c);},0);
+         return totals[g.code]?+((totals[g.code]-known)/totals[g.code]*100).toFixed(1):0; }),
+    customdata: order.map(function(g){
+         var known=cats.reduce(function(a,c){return a+cntOf(g,c);},0);
+         var n=Math.max(0,totals[g.code]-known);
+         var p=totals[g.code]?+(n/totals[g.code]*100).toFixed(1):0;
+         return [g.name,'All other '+catPL(),n,p]; }),
+    marker:{ color:'#C9D8D8' },
+    hoverlabel: HOVER,
+    hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>' });
+
+  drawChart('chart-cross', traces, {
+    barmode:'stack', showlegend:true,
+    yaxis:axC({ tickfont:{size:10, color:'#2A3535'} }),
+    xaxis:axV({ range:[0,100], ticksuffix:'%',
+                title:{text:'Share of the occupation\u2019s postings', font:{size:10, color:PAL.soft}} }),
+    legend:{orientation:'h', y:-0.16, font:{size:9, color:PAL.mid}},
+    margin:{l:8, r:16, t:10, b:64}
+  },
+  {title:catC()+' by workforce group',
+   cols:['Occupation'].concat(cats).concat(['Other']),
+   rows:grps.map(function(g){
+     var vals=cats.map(function(c){ return pctOf(g,c); });
+     return [g.name].concat(vals).concat([+(100-vals.reduce(function(a,b){return a+b;},0)).toFixed(1)]); })});
 }
 function wrapName(n){
   var w=n.split(' '); if(w.length<2) return n;
@@ -499,7 +522,7 @@ function buildRoleTab(){
       '<div class="card card-b"><div class="card-head">Top Hiring Companies</div>'+
         '<div class="card-sub">Employers with the most openings (all states). Colour indicates '+catL()+'.</div>'+
         '<div class="card-body"><div id="rc-cos-'+g.code+'" style="height:330px"></div></div></div>'+
-      '<div class="card card-g" style="margin-top:14px"><div class="card-head">Top 3 Employers by '+catC()+'</div>'+
+      '<div class="card card-g" style="margin-top:14px"><div class="card-head">Top 10 Employers by '+catC()+'</div>'+
         '<div class="card-sub">Leading hiring organisations within each '+catL()+' for this occupation</div>'+
         '<div class="tbl-wrap" id="rc-empbysec-'+g.code+'"></div></div>';
     wrap.appendChild(p);
@@ -586,7 +609,7 @@ function renderEmployersBySector(code){
     '<th style="width:36%">'+catC()+'</th><th style="width:28px;text-align:center">#</th>'+
     '<th>Employer</th><th style="text-align:right">Postings</th></tr></thead><tbody>';
   sectors.forEach(function(sector){
-    var emps=(bySector[sector]||[]).slice(0,3), col=isicColor(sector);
+    var emps=(bySector[sector]||[]).slice(0,10), col=isicColor(sector);
     emps.forEach(function(e,i){
       html+='<tr>';
       if(i===0) html+='<td rowspan="'+emps.length+'" style="font-weight:600;color:'+col+';vertical-align:middle;border-left:3px solid '+col+'">'+esc(sector)+'</td>';
@@ -976,6 +999,7 @@ function renderMarketContext(rows){
   
   /* 1. States and their occupations — horizontal stacked, with an "All other
         occupations" remainder so every state's bar equals its true total. */
+  var HOVER_DARK={bgcolor:'#111827', bordercolor:'#111827', font:{color:'#FFFFFF', size:12, family:'Outfit'}};
   var el1 = document.getElementById('ctx-state-occ');
   if (!states.length || !occs.length){
     el1.innerHTML = '<p class="chart-empty">Not enough data.</p>';
@@ -985,16 +1009,25 @@ function renderMarketContext(rows){
     var traces = occs.map(function(occ, i){
       return { type:'bar', orientation:'h', name:occ, y:yStates,
         x: yStates.map(function(st){ return (byStateOcc[st]||{})[occ]||0; }),
+        customdata: yStates.map(function(st){
+          var n=(byStateOcc[st]||{})[occ]||0;
+          return [st, occ, n, stateTot[st]?+(n/stateTot[st]*100).toFixed(1):0]; }),
         marker:{ color: CAT[i % CAT.length] },
-        hovertemplate:'<b>%{y}</b><br>%{x:,} postings<extra>'+occ+'</extra>'
+        hoverlabel: HOVER_DARK,
+        hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this state<extra></extra>'
       };
     });
     traces.push({ type:'bar', orientation:'h', name:'All other occupations', y:yStates,
       x: yStates.map(function(st){
            var known = occs.reduce(function(a,o){ return a + ((byStateOcc[st]||{})[o]||0); }, 0);
            return Math.max(0, (stateTot[st]||0) - known); }),
+      customdata: yStates.map(function(st){
+           var known = occs.reduce(function(a,o){ return a + ((byStateOcc[st]||{})[o]||0); }, 0);
+           var n = Math.max(0, (stateTot[st]||0) - known);
+           return [st, 'All other occupations', n, stateTot[st]?+(n/stateTot[st]*100).toFixed(1):0]; }),
       marker:{ color:'#C9D8D8' },
-      hovertemplate:'<b>%{y}</b><br>%{x:,} postings<extra>All other occupations</extra>' });
+      hoverlabel: HOVER_DARK,
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this state<extra></extra>' });
     drawChart('ctx-state-occ', traces, {
       barmode:'stack', showlegend:true,
       yaxis:axC({ tickfont:{size:10, color:PAL.mid} }),
@@ -1021,16 +1054,25 @@ function renderMarketContext(rows){
     var traces2 = topStates.map(function(st, i){
       return { type:'bar', orientation:'h', name:st, y:yOccs,
         x: occOrder.map(function(occ){ return (byOccState[occ]||{})[st]||0; }),
+        customdata: occOrder.map(function(occ){
+          var n=(byOccState[occ]||{})[st]||0;
+          return [occ, st, n, occTot[occ]?+(n/occTot[occ]*100).toFixed(1):0]; }),
         marker:{ color: CAT[i % CAT.length] },
-        hovertemplate:'<b>'+st+'</b><br>%{x:,} postings<extra></extra>'
+        hoverlabel: HOVER_DARK,
+        hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>'
       };
     });
     traces2.push({ type:'bar', orientation:'h', name:'All other states', y:yOccs,
       x: occOrder.map(function(occ){
            var known = topStates.reduce(function(a,st){ return a + ((byOccState[occ]||{})[st]||0); }, 0);
            return Math.max(0, (occTot[occ]||0) - known); }),
+      customdata: occOrder.map(function(occ){
+           var known = topStates.reduce(function(a,st){ return a + ((byOccState[occ]||{})[st]||0); }, 0);
+           var n = Math.max(0, (occTot[occ]||0) - known);
+           return [occ, 'All other states', n, occTot[occ]?+(n/occTot[occ]*100).toFixed(1):0]; }),
       marker:{ color:'#C9D8D8' },
-      hovertemplate:'<b>All other states</b><br>%{x:,} postings<extra></extra>' });
+      hoverlabel: HOVER_DARK,
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>' });
     drawChart('ctx-occ-states', traces2, {
       barmode:'stack', showlegend:true,
       yaxis:axC({ tickfont:{size:9.5, color:PAL.mid} }),
@@ -1054,10 +1096,18 @@ function renderMarketContext(rows){
     var z = states.map(function(st){
       return occs.map(function(occ){ return (byStateOcc[st]||{})[occ]||0; });
     });
+    var custom = states.map(function(st){
+      return occs.map(function(occ){
+        var n=(byStateOcc[st]||{})[occ]||0;
+        return [st, occ, n, stateTot[st]?+(n/stateTot[st]*100).toFixed(1):0];
+      });
+    });
     drawChart('ctx-matrix', [{
       type:'heatmap', z:z, x:occs.map(function(o){ return wrapLabel(o,14); }), y:states,
+      customdata:custom,
       colorscale:SEQ, xgap:3, ygap:3,
-      hovertemplate:'<b>%{y}</b><br>%{x}<br>%{z:,} postings<extra></extra>',
+      hoverlabel:{bgcolor:'#111827', bordercolor:'#111827', font:{color:'#FFFFFF', size:12, family:'Outfit'}},
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this state<extra></extra>',
       colorbar:{title:{text:'Postings',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9},outlinewidth:0}
     }], {
       xaxis:{side:'top',tickangle:0,tickfont:{size:8.5,color:PAL.mid},fixedrange:true,automargin:true},

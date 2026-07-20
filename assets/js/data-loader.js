@@ -506,7 +506,7 @@ function buildDATA(rawRows, diag, sector) {
     return { name: n, count: coAll[n].count, isic: coAll[n].isic };
   }).sort(function (a, b) { return b.count - a.count; });
 
-  /* 8. sectorEmployers: per role -> per sector -> top 3 employers. */
+  /* 8. sectorEmployers: per role -> per sector -> top 10 employers. */
   var sectorEmployers = {};
   Object.keys(coSec).forEach(function (code) {
     var out = {};
@@ -514,7 +514,7 @@ function buildDATA(rawRows, diag, sector) {
       out[sector] = Object.keys(coSec[code][sector]).map(function (n) {
         return { name: n, count: coSec[code][sector][n] };
       }).filter(function (c) { return c.name && c.name !== "—"; })
-        .sort(function (a, b) { return b.count - a.count; }).slice(0, 3);
+        .sort(function (a, b) { return b.count - a.count; }).slice(0, 10);
     });
     sectorEmployers[code] = out;
   });
