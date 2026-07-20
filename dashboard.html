@@ -38,7 +38,7 @@
     <select id="flt-isic" onchange="applyFilters()" aria-label="Filter by employer type">
       <option value="ALL">All Employer Types</option>
     </select>
-    <label><input type="checkbox" id="flt-genuine" checked onchange="applyFilters()"> Genuine Employers Only</label>
+    <label><input type="checkbox" id="flt-genuine" checked onchange="applyFilters()"> Remove Duplicate Job IDs</label>
   </div>
   <span id="filter-count"></span>
 </header>
@@ -68,7 +68,7 @@
   <div class="data-banner" id="data-banner"></div>
 
   <div class="filter-box" id="genuine-explain">
-    <b>Genuine Employers filter (enabled by default):</b> Hides duplicate re-postings of the same role by the same employer, so every posting is counted once. This produces a cleaner picture of distinct employer demand. Uncheck the filter above to include all raw listings.
+    <b>Duplicate filter (enabled by default):</b> Every job posting is counted as its own post. This filter only removes rows that carry the <i>exact same Job ID</i> more than once — a scraping artifact, not a real second posting. In the current datasets every Job ID is unique, so no postings are removed and the filter has no effect on the numbers.
   </div>
 
   <div class="kpi-row">
@@ -292,7 +292,7 @@
 <!-- ====== DATA EXPLORER ====== -->
 <section id="tab-explorer" class="tab-panel" hidden>
   <div class="note-box" id="explorer-note">
-    This is the raw posting-level data behind every chart in the dashboard, and all of the header filters for state, employer type and genuine employers apply to it. Each row is a single job posting. Long description, requirement and benefit text is shortened to three lines to keep the table readable, and the complete text appears when you hover over the cell; the original listing is always one click away through the link in the final column.
+    This is the raw posting-level data behind every chart in the dashboard, and all of the header filters for state, employer type and duplicate Job IDs apply to it. Each row is a single job posting. Long description, requirement and benefit text is shortened to three lines to keep the table readable, and the complete text appears when you hover over the cell; the original listing is always one click away through the link in the final column.
   </div>
   <div class="card card-t" style="margin-bottom:14px">
     <div class="card-head">Occupation Summary (ISCO-4 Level)</div>

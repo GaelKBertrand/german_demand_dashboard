@@ -359,7 +359,7 @@ function renderAlert(rows){
   if(el) el.innerHTML='<b>Key finding:</b> Germany\'s '+esc(APP.sector.label.toLowerCase())+
     ' sector posted <b>'+fmt(total)+' in-scope vacancies</b> over the '+esc(DATA.meta.dateRange||'collection')+' window. '+
     'Most-advertised occupation: <b>'+esc(tr)+'</b>. Largest hiring sector: <b>'+esc(te)+'</b>. '+
-    'All figures reflect the current header filters (state, employer type, genuine employers).';
+    'All figures reflect the current header filters (state, employer type, duplicate Job IDs).';
 }
 function topKeyOf(o){ var b=null,n=-1; for(var k in o) if(o[k]>n){n=o[k];b=k;} return b; }
 

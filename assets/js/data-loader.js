@@ -360,6 +360,7 @@ function buildDATA(rawRows, diag, sector) {
       req:      req || "",
       benefits: ben || "",
       workType: pick(row, ["Work_Type", "Workplace", "Remote"]) || "",
+      jobId:    pick(row, ["Job_ID", "JobId", "Job_Id", "ID"]) || "",
       url:      pick(row, ["Job_URL", "URL", "Link", "Company_URL"]) || ""
     });
   });
@@ -403,8 +404,11 @@ function buildDATA(rawRows, diag, sector) {
   var byState = {}, byRole = {}, byIsco3 = {}, byIsco4 = {};
   var coRole = {}, coSec = {}, coAll = {};
 
+  var _noId = 0;
   recs.forEach(function (r) {
-    var key = (r.company + "|" + r.title).toLowerCase();
+    /* Each posting is a post. Only an EXACT repeat of the same Job_ID is a
+       duplicate (a scraper artifact); rows without an ID are never collapsed. */
+    var key = r.jobId ? ("id:" + r.jobId) : ("row:" + (_noId++));
     var genuine = seen[key] ? 1 : 0; seen[key] = true;
 
     rows.push([
