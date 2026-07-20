@@ -40,8 +40,8 @@ var plotBase = {
   plot_bgcolor:'rgba(0,0,0,0)',
   font:{ family:"'Outfit',sans-serif", color:PAL.mid, size:11 },
   margin:{ l:8, r:8, t:10, b:8 },
-  hoverlabel:{ bgcolor:'#0F2E2E', bordercolor:'#0F2E2E', align:'left',
-               font:{ family:"'Outfit',sans-serif", size:11.5, color:'#FFFFFF' } },
+  hoverlabel:{ bgcolor:'#111827', bordercolor:'#111827', align:'left', namelength:-1,
+               font:{ family:"'Outfit',sans-serif", size:13.5, color:'#FFFFFF' } },
   hovermode:'closest',
   showlegend:false
 };
@@ -87,6 +87,81 @@ function drawChart(id, traces, layout, meta){
   Plotly.react(el, traces, Object.assign({}, plotBase, layout || {}), plotCfg);
   el._chartMeta = meta || deriveMeta(id, traces);
   mountChartTools(el, id);
+  attachCopyOnClick(el);
+}
+
+/* ---- click-to-copy for hover info ----------------------------------------
+   Native Plotly hover tooltips cannot contain buttons, so clicking a point
+   pins the same information in a card with a clear Copy button.             */
+function attachCopyOnClick(el){
+  if (el._copyBound || typeof el.on !== 'function') return;
+  el._copyBound = true;
+  el.on('plotly_click', function(ev){
+    if (!ev || !ev.points || !ev.points.length) return;
+    var pt = ev.points[0], lines = [];
+    if (pt.customdata && pt.customdata.length){
+      var cd = pt.customdata;
+      lines.push(String(cd[0]));
+      if (cd.length > 1) lines.push(String(cd[1]));
+      if (cd.length > 2) lines.push(Number(cd[2]).toLocaleString() + ' postings' +
+                                    (cd.length > 3 ? ' \u00b7 ' + cd[3] + '%' : ''));
+    } else {
+      var lab = stripTags(pt.orientation === 'h' ? pt.y : pt.x);
+      var val = pt.orientation === 'h' ? pt.x : (pt.z != null ? pt.z : pt.y);
+      if (pt.data && pt.data.name) lines.push(pt.data.name);
+      lines.push(lab);
+      lines.push(Number(val).toLocaleString());
+    }
+    showCopyCard(lines.filter(Boolean), ev.event);
+  });
+}
+function showCopyCard(lines, mouseEv){
+  var card = document.getElementById('copy-card');
+  if (!card){
+    card = document.createElement('div');
+    card.id = 'copy-card';
+    card.style.cssText = 'position:fixed;z-index:9999;background:#111827;color:#FFFFFF;'+
+      'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:14px 16px;'+
+      'font:500 13.5px Outfit,sans-serif;line-height:1.55;max-width:340px;min-width:200px';
+    document.body.appendChild(card);
+    document.addEventListener('click', function(e){
+      if (card.style.display !== 'none' && !card.contains(e.target)) card.style.display = 'none';
+    }, true);
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') card.style.display = 'none'; });
+  }
+  var text = lines.join('\n');
+  card.innerHTML = '';
+  var body = document.createElement('div');
+  lines.forEach(function(l, i){
+    var d = document.createElement('div');
+    if (i === 0) d.style.fontWeight = '700';
+    d.textContent = l;
+    body.appendChild(d);
+  });
+  card.appendChild(body);
+  var btn = document.createElement('button');
+  btn.textContent = '\u29c9 Copy';
+  btn.style.cssText = 'margin-top:10px;display:inline-block;background:#C98A0B;color:#111827;'+
+    'border:0;border-radius:7px;padding:6px 14px;font:700 12.5px Outfit,sans-serif;cursor:pointer';
+  btn.onclick = function(e){
+    e.stopPropagation();
+    var done = function(){ btn.textContent = '\u2713 Copied'; setTimeout(function(){ card.style.display='none'; }, 700); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, function(){ fallbackCopy(text); done(); });
+    } else { fallbackCopy(text); done(); }
+  };
+  card.appendChild(btn);
+  var x = (mouseEv && mouseEv.clientX || 200), y = (mouseEv && mouseEv.clientY || 200);
+  card.style.display = 'block';
+  card.style.left = Math.min(x + 12, window.innerWidth - 360) + 'px';
+  card.style.top  = Math.min(y + 12, window.innerHeight - 160) + 'px';
+}
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch(e){}
+  document.body.removeChild(ta);
 }
 
 /* Fallback CSV data if a caller didn't supply meta: read it off the traces. */

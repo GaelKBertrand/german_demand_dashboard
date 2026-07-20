@@ -354,13 +354,21 @@ function buildDATA(rawRows, diag, sector) {
       company:  pick(row, ["Company_Name", "Company", "Employer"]) || "—",
       title:    cleanTitleJS(pick(row, ["Job_Title", "Title"]),
                              pick(row, ["City"]), pick(row, ["State", "Bundesland", "Region"])) || "\u2014",
-      empCat:   pick(row, ["Employer_Category", "Employer_Type"]) || "",
+      empCat:   pick(row, ["Employer_Type_Raw", "Employer_Category", "Employer_Type"]) || "",
       salary:   pick(row, ["Salary", "Pay", "Compensation"]) || "",
       desc:     desc || "",
       req:      req || "",
       benefits: ben || "",
       workType: pick(row, ["Work_Type", "Workplace", "Remote"]) || "",
       jobId:    pick(row, ["Job_ID", "JobId", "Job_Id", "ID"]) || "",
+      isicCode: pick(row, ["Employer_ISIC_4", "ISIC_4", "ISIC_Code"]) || "",
+      catClear: (function(){
+                   var conf = (pick(row, ["Employer_Category_Confidence_Level", "Employer_Category_Confidence"]) || "").toLowerCase();
+                   var catV = (pick(row, ["Employer_Category"]) || "").trim();
+                   if (conf === "low") return 0;
+                   if (!catV || /^(not specified|not clear|unclear|unknown)$/i.test(catV)) return 0;
+                   return 1;
+                 })(),
       url:      pick(row, ["Job_URL", "URL", "Link", "Company_URL"]) || ""
     });
   });
@@ -380,6 +388,8 @@ function buildDATA(rawRows, diag, sector) {
   /* map ISCO-4 name -> its numeric code (first seen wins). */
   var isco4CodeByName = {};
   recs.forEach(function (r) { if (!(r.isco4nm in isco4CodeByName) && !isNaN(r.isco4code)) isco4CodeByName[r.isco4nm] = r.isco4code; });
+  var isicCodeByName = {};
+  recs.forEach(function (r) { if (r.isicCode && !(r.isic in isicCodeByName)) isicCodeByName[r.isic] = String(r.isicCode).replace(/\.0$/, ""); });
 
   /* 3. Week buckets. */
   var dated = recs.map(function (r) { return r.date; }).filter(Boolean);
@@ -419,7 +429,8 @@ function buildDATA(rawRows, diag, sector) {
       isco4Ix[r.isco4nm],
       empIx[r.emp],
       genuine,
-      weekIndexOf(r.date)
+      weekIndexOf(r.date),
+      r.catClear
     ]);
 
     raw.title.push(r.title);     raw.date.push(r.dateStr);   raw.company.push(r.company);
@@ -533,7 +544,8 @@ function buildDATA(rawRows, diag, sector) {
     isco3Table: isco3Table, isco4Table: isco4Table,
     stateGeo: stateGeo, companies: companies, companiesAll: companiesAll,
     sectorEmployers: sectorEmployers,
-    isco4CodeByName: isco4CodeByName
+    isco4CodeByName: isco4CodeByName,
+    isicCodeByName: isicCodeByName
   };
 }
 

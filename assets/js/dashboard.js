@@ -182,6 +182,7 @@ function populateFilters(){
   ic.innerHTML = '<option value="ALL">All Employer Types</option>' +
     DATA.lookup.isic.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
   document.getElementById('flt-genuine').checked = APP.filterGenuine;
+  var fc=document.getElementById('flt-clearcat'); if(fc) fc.checked = !!APP.filterClearCat;
 }
 
 function fillDataBanner(){
@@ -206,13 +207,15 @@ function getRows(){
     if (si!==-999 && r[0]!==si) return false;
     if (ii!==-999 && r[1]!==ii) return false;
     if (APP.filterGenuine && r[6]===1) return false;
+    if (APP.filterClearCat && r[8]===0) return false;
     return true;
   });
 }
 function applyFilters(){
   APP.filterState   = document.getElementById('flt-state').value;
   APP.filterIsic    = document.getElementById('flt-isic').value;
-  APP.filterGenuine = document.getElementById('flt-genuine').checked;
+  APP.filterGenuine  = document.getElementById('flt-genuine').checked;
+  APP.filterClearCat = (document.getElementById('flt-clearcat')||{}).checked || false;
   EXP_PAGE = 0;
   renderAll();
 }
@@ -357,9 +360,9 @@ function renderAlert(rows){
   var tr = topKeyOf(ic)||'N/A', te = topKeyOf(isicc)||'N/A';
   var el=document.getElementById('ov-alert');
   if(el) el.innerHTML='<b>Key finding:</b> Germany\'s '+esc(APP.sector.label.toLowerCase())+
-    ' sector posted <b>'+fmt(total)+' in-scope vacancies</b> over the '+esc(DATA.meta.dateRange||'collection')+' window. '+
+    ' sector posted <b>'+fmt(total)+' vacancies</b> over the '+esc(DATA.meta.dateRange||'collection')+' window. '+
     'Most-advertised occupation: <b>'+esc(tr)+'</b>. Largest hiring sector: <b>'+esc(te)+'</b>. '+
-    'All figures reflect the current header filters (state, employer type, duplicate Job IDs).';
+    'All figures reflect the current header filters (state, employer type, duplicate Job IDs, unclear categories).';
 }
 function topKeyOf(o){ var b=null,n=-1; for(var k in o) if(o[k]>n){n=o[k];b=k;} return b; }
 
@@ -371,7 +374,7 @@ function renderTop10(rows){
     return { label:k, code:(DATA.isco4CodeByName&&DATA.isco4CodeByName[k])||'', count:c[k] };
   }).sort(function(a,b){return b.count-a.count;}).slice(0,10);
   hBar('chart-top10', items, { total:total, color:PAL.teal, wrap:28,
-       ofWhat:'in-scope postings', title:'Top 10 occupations by demand share' });
+       ofWhat:'postings', title:'Top 10 occupations by demand share' });
 }
 
 /* ======= EMPLOYER BAR ===================================================== */
@@ -679,7 +682,7 @@ function renderStateBar(rows){
   var tot=rows.length;
   var items=Object.keys(c).map(function(k){ return { label:k, count:c[k] }; });
   hBar('chart-states', items, { total:tot, color:PAL.teal, wrap:22,
-       ofWhat:'in-scope postings', title:'States ranked by demand' });
+       ofWhat:'postings', title:'States ranked by demand' });
 }
 function renderStateTable(rows){
   var sc={}, si2={};
@@ -729,6 +732,31 @@ function renderExplorer(){
     html+='<tr><td><b>'+esc(name)+'</b></td><td><span class="badge">'+esc(String(code))+'</span></td><td class="cnt">'+fmt(a.count)+'</td><td class="'+(ptPct>60?'gld':'')+'">'+ptPct+'%</td><td>'+esc(topK(a.emps))+'</td><td>'+esc(topK(a.states))+'</td></tr>';
   });
   document.getElementById('explorer-table').innerHTML=html+'</tbody></table>';
+
+  /* Employer sector summary at the ISIC-4 level — mirrors the table above. */
+  var sAgg={};
+  rows.forEach(function(r){
+    if (r[1]<0) return;
+    var name=DATA.lookup.isic[r[1]];
+    var a=sAgg[name]=sAgg[name]||{count:0,pt:0,occ:{},states:{}};
+    a.count++;
+    var et=DATA.lookup.empTypes[r[5]]||'';
+    if (/part-time/i.test(et)) a.pt++;
+    if (r[4]>=0){ var o=DATA.lookup.isco4[r[4]]; a.occ[o]=(a.occ[o]||0)+1; }
+    if (r[0]>=0){ var st=DATA.lookup.states[r[0]]; a.states[st]=(a.states[st]||0)+1; }
+  });
+  var sNames=Object.keys(sAgg).sort(function(a,b){ return sAgg[b].count-sAgg[a].count; });
+  var el2=document.getElementById('explorer-isic-table');
+  if (el2){
+    var h2='<table class="data-tbl"><thead><tr><th>Employer Sector (ISIC-4)</th><th>Code</th><th>Total Postings</th><th>% Open to Part-time</th><th>Top Occupation (ISCO-4)</th><th>Top State</th></tr></thead><tbody>';
+    sNames.forEach(function(name){
+      var a=sAgg[name];
+      var ptPct=a.count?+(a.pt/a.count*100).toFixed(1):0;
+      var code=(DATA.isicCodeByName&&DATA.isicCodeByName[name])||'\u2014';
+      h2+='<tr><td><b>'+esc(name)+'</b></td><td><span class="badge badge-g">'+esc(String(code))+'</span></td><td class="cnt">'+fmt(a.count)+'</td><td class="'+(ptPct>60?'gld':'')+'">'+ptPct+'%</td><td>'+esc(topK(a.occ))+'</td><td>'+esc(topK(a.states))+'</td></tr>';
+    });
+    el2.innerHTML=h2+'</tbody></table>';
+  }
   renderFullTable();
 }
 function explorerSearch(){ EXP_SEARCH=document.getElementById('exp-search').value.toLowerCase(); EXP_PAGE=0; renderFullTable(); }
@@ -953,7 +981,7 @@ function renderRegionProfile(){
 
 function classBar(id, arr, total, col){
   hBar(id, arr.map(function(d){ return { label:d.name, code:d.code, count:d.count }; }),
-       { total:total, color:col, wrap:26, ofWhat:'in-scope postings',
+       { total:total, color:col, wrap:26, ofWhat:'postings',
          title:(col===PAL.gold?'ISCO-4 unit groups':'ISCO-3 minor groups') });
 }
 function classTable(id, arr, total, heads, withParent){
@@ -1205,7 +1233,7 @@ function tierOccupations(rows){
 
   hBar('tier-occ-bar', top.map(function(d){
     return { label:d.label, code:(DATA.isco4CodeByName&&DATA.isco4CodeByName[d.label])||'', count:d.count };
-  }), { total:total, color:PAL.teal, wrap:30, ofWhat:'in-scope postings',
+  }), { total:total, color:PAL.teal, wrap:30, ofWhat:'postings',
         title:'Top '+TIER_N+' occupations (ISCO-4)' });
 
   /* occupation x employer sector stacked bars */
@@ -1285,7 +1313,7 @@ function tierTitles(rows){
   kpi('ttit-k4', fmt(named), 'Postings with a Usable Title', pct(named,total)+'% of the current selection carries a non-empty title');
 
   hBar('tier-title-bar', top.map(function(d){ return { label:d.label, count:d.count }; }),
-       { total:total, color:PAL.tealD, wrap:30, ofWhat:'in-scope postings',
+       { total:total, color:PAL.tealD, wrap:30, ofWhat:'postings',
          title:'Top '+TIER_N+' advertised job titles' });
 
   /* map the top titles to the ISCO-4 occupations they were classified into */
@@ -1405,7 +1433,7 @@ function tierEmployers(rows){
     var sub = byCo[d.label] || [];
     var sec = leadBy(sub, function(r){ return r[1]>=0 ? DATA.lookup.isic[r[1]] : null; });
     return { label:d.label, count:d.count, color:isicColor(sec) };
-  }), { total:total, pct:false, wrap:30, ofWhat:'in-scope postings',
+  }), { total:total, pct:false, wrap:30, ofWhat:'postings',
         title:'Top '+TIER_N+' employers by postings' });
 
   var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>Employer</th><th>Postings</th><th>Share</th>'+
@@ -1450,7 +1478,7 @@ function tierSectors(rows){
 
   hBar('tier-sector-bar', top.map(function(d){
     return { label:d.label, count:d.count, color:isicColor(d.label) };
-  }), { total:total, wrap:26, ofWhat:'in-scope postings',
+  }), { total:total, wrap:26, ofWhat:'postings',
         title:catPC()+' ranked by postings' });
 
   /* sector x region, row-normalised */

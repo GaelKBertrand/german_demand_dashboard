@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<link rel="stylesheet" href="assets/css/dashboard.css">
+<link rel="stylesheet" href="assets/css/dashboard.css?v=20260720-3">
 </head>
 <body>
 
@@ -39,6 +39,7 @@
       <option value="ALL">All Employer Types</option>
     </select>
     <label><input type="checkbox" id="flt-genuine" checked onchange="applyFilters()"> Remove Duplicate Job IDs</label>
+    <label><input type="checkbox" id="flt-clearcat" onchange="applyFilters()"> Hide Unclear Employer Categories</label>
   </div>
   <span id="filter-count"></span>
 </header>
@@ -69,6 +70,7 @@
 
   <div class="filter-box" id="genuine-explain">
     <b>Duplicate filter (enabled by default):</b> Every job posting is counted as its own post. This filter only removes rows that carry the <i>exact same Job ID</i> more than once — a scraping artifact, not a real second posting. In the current datasets every Job ID is unique, so no postings are removed and the filter has no effect on the numbers.
+    <br><b>Unclear-category filter (off by default):</b> Hides postings whose employer category could not be confidently determined — rows where the classifier's <i>Employer_Category_Confidence_Level</i> is Low, or the category is empty or marked unclear. Turn it on for a stricter view of employer demand.
   </div>
 
   <div class="kpi-row">
@@ -83,7 +85,7 @@
   <div class="grid-2">
     <div class="card card-t">
       <div class="card-head">Top 10 Roles by Demand Share</div>
-      <div class="card-sub">These are the most-advertised occupations, shown as a percentage of all in-scope postings. Hover any bar to see the full occupation name together with its posting count.</div>
+      <div class="card-sub">These are the most-advertised occupations, shown as a percentage of all postings. Hover any bar to see the full occupation name together with its posting count.</div>
       <div class="card-body"><div id="chart-top10" style="height:310px"></div></div>
     </div>
     <div class="card card-g">
@@ -101,7 +103,7 @@
     </div>
     <div class="card card-g">
       <div class="card-head">Who Is Hiring?</div>
-      <div class="card-sub">This shows how demand is distributed across employer sectors, measured as a percentage of all in-scope postings.</div>
+      <div class="card-sub">This shows how demand is distributed across employer sectors, measured as a percentage of all postings.</div>
       <div class="card-body"><div id="chart-isic" style="height:240px"></div></div>
     </div>
   </div>
@@ -245,7 +247,7 @@
 <div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="tsec-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="tsec-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="tsec-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="tsec-k4"></div></div></div>
     <div class="card card-t" style="margin-bottom:14px">
       <div class="card-head">Employer sectors ranked by posting volume</div>
-      <div class="card-sub">Which kinds of organisation are generating demand, ranked by their number of in-scope postings and shown with their share of the sector total.</div>
+      <div class="card-sub">Which kinds of organisation are generating demand, ranked by their number of postings and shown with their share of the sector total.</div>
       <div class="card-body"><div id="tier-sector-bar"></div></div>
     </div>
     <div class="card card-g" style="margin-bottom:14px">
@@ -278,7 +280,7 @@
     </div>
     <div class="card card-g">
       <div class="card-head">States Ranked by Demand</div>
-      <div class="card-sub">Every region that carries state-level location data, ranked by its share of in-scope postings.</div>
+      <div class="card-sub">Every region that carries state-level location data, ranked by its share of postings.</div>
       <div class="card-body"><div id="chart-states" style="height:460px"></div></div>
     </div>
   </div>
@@ -298,6 +300,11 @@
     <div class="card-head">Occupation Summary (ISCO-4 Level)</div>
     <div class="card-sub">An aggregate view giving the posting count, the share open to part-time work, the leading employer sector and the leading state for each occupational group.</div>
     <div class="tbl-wrap" id="explorer-table"></div>
+  </div>
+  <div class="card card-g" style="margin-bottom:14px">
+    <div class="card-head">Employer Sector Summary (ISIC-4 Level)</div>
+    <div class="card-sub">The same aggregate view for employer sectors: each ISIC Rev.4 activity with its official 4-digit code from the dataset, posting count, share open to part-time work, the leading occupation it hires, and its leading state.</div>
+    <div class="tbl-wrap" id="explorer-isic-table"></div>
   </div>
   <div class="card card-b">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 4px;gap:12px;flex-wrap:wrap">
@@ -335,7 +342,7 @@
     </div>
     <div class="card card-g" style="margin-bottom:14px">
       <div class="card-head">ISCO-4 · Unit Groups</div>
-      <div class="card-sub">The four-digit ISCO-08 unit groups, ranked by their share of in-scope postings. This is the most specific level the classifier assigns and the primary level of this analysis.</div>
+      <div class="card-sub">The four-digit ISCO-08 unit groups, ranked by their share of postings. This is the most specific level the classifier assigns and the primary level of this analysis.</div>
       <div class="card-body"><div id="isco4-chart"></div></div>
       <div class="tbl-wrap" id="isco4-table"></div>
     </div>
@@ -382,13 +389,13 @@
 <div id="static-tabs"><!-- About/Methods, Qualifications etc. injected from /content --></div>
 
 <footer id="footer">
-  GATI Foundation · <span id="foot-sector">Sector</span> Labour Market Intelligence · Data: StepStone Germany · Classification: ISCO-08 (ILO), employer sector (ISIC Rev.4)
+  GATI Foundation · <span id="foot-sector">Sector</span> Labour Market Intelligence · Data: StepStone Germany · Classification: ISCO-08 (ILO), employer sector (ISIC Rev.4) · Build 20260720-3
 </footer>
 
-<script src="assets/js/sectors.js"></script>
-<script src="assets/js/data-loader.js"></script>
-<script src="assets/js/role-meta.js"></script>
-<script src="assets/js/chart-kit.js"></script>
-<script src="assets/js/dashboard.js"></script>
+<script src="assets/js/sectors.js?v=20260720-3"></script>
+<script src="assets/js/data-loader.js?v=20260720-3"></script>
+<script src="assets/js/role-meta.js?v=20260720-3"></script>
+<script src="assets/js/chart-kit.js?v=20260720-3"></script>
+<script src="assets/js/dashboard.js?v=20260720-3"></script>
 </body>
 </html>

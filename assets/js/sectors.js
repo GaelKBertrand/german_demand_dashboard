@@ -30,7 +30,7 @@ const SECTORS = [
     tagline: "Hotels, kitchens, service & events",
     scope: "ISCO 14 · 51 · 91 · 94", accent: "#C4880C",
     source: "StepStone Germany", kpiNoun: "Hospitality",
-    catColumn: "Job_Category", catLabel: "Job Category", catLabelPlural: "Job Categories",
+    catColumn: "Employer_Category", catLabel: "Employer Sector", catLabelPlural: "Employer Sectors",
     staticTabs: [
       { id: "about", label: "About & Methods",        file: "content/hospitality-about.html" },
       { id: "quals", label: "Qualifications & Skills", file: "content/hospitality-quals.html" }
@@ -50,7 +50,7 @@ const SECTORS = [
     tagline: "Drivers, warehouse, dispatch & supply chain",
     scope: "ISCO 83 · 93 · 43", accent: "#3B6E8F",
     source: "StepStone Germany", kpiNoun: "Logistics",
-    catColumn: "Job_Category", catLabel: "Job Category", catLabelPlural: "Job Categories",
+    catColumn: "Employer_Category", catLabel: "Employer Sector", catLabelPlural: "Employer Sectors",
     staticTabs: [
       { id: "about", label: "About & Methods",        file: "content/logistics-about.html" },
       { id: "quals", label: "Qualifications & Skills", file: "content/logistics-quals.html" }
