@@ -53,7 +53,7 @@ function axV(extra){   /* value axis (numbers) */
 }
 function axC(extra){   /* category axis (labels) */
   return Object.assign({ showgrid:false, automargin:true,
-    tickfont:{size:10, color:PAL.mid}, fixedrange:true }, extra||{});
+    tickfont:{size:11, color:'#2A3535'}, fixedrange:true }, extra||{});
 }
 
 /* ---- labels --------------------------------------------------------------

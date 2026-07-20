@@ -74,6 +74,86 @@ function sniffDelimiter(text) {
    if a raw (unprocessed) CSV is deployed. Official ISCO-08 unit-group titles,
    keyed by 4-digit code; fallback chain: CSV name -> this map -> ISCO-3 name.
    ============================================================================ */
+
+
+/* Official ISCO-08 sub-major group (2-digit) titles. */
+var ISCO2_OFFICIAL = {
+ 11:"Chief Executives, Senior Officials and Legislators",12:"Administrative and Commercial Managers",
+ 13:"Production and Specialised Services Managers",14:"Hospitality, Retail and Other Services Managers",
+ 21:"Science and Engineering Professionals",22:"Health Professionals",23:"Teaching Professionals",
+ 24:"Business and Administration Professionals",25:"Information and Communications Technology Professionals",
+ 26:"Legal, Social and Cultural Professionals",31:"Science and Engineering Associate Professionals",
+ 32:"Health Associate Professionals",33:"Business and Administration Associate Professionals",
+ 34:"Legal, Social, Cultural and Related Associate Professionals",35:"Information and Communications Technicians",
+ 41:"General and Keyboard Clerks",42:"Customer Services Clerks",43:"Numerical and Material Recording Clerks",
+ 44:"Other Clerical Support Workers",51:"Personal Services Workers",52:"Sales Workers",
+ 53:"Personal Care Workers",54:"Protective Services Workers",
+ 61:"Market-oriented Skilled Agricultural Workers",62:"Market-oriented Skilled Forestry, Fishery and Hunting Workers",
+ 71:"Building and Related Trades Workers (excluding Electricians)",72:"Metal, Machinery and Related Trades Workers",
+ 73:"Handicraft and Printing Workers",74:"Electrical and Electronics Trades Workers",
+ 75:"Food Processing, Woodworking, Garment and Other Craft and Related Trades Workers",
+ 81:"Stationary Plant and Machine Operators",82:"Assemblers",83:"Drivers and Mobile Plant Operators",
+ 91:"Cleaners and Helpers",92:"Agricultural, Forestry and Fishery Labourers",
+ 93:"Labourers in Mining, Construction, Manufacturing and Transport",94:"Food Preparation Assistants",
+ 95:"Street and Related Sales and Services Workers",96:"Refuse Workers and Other Elementary Workers"
+};
+if (typeof window !== "undefined") window.ISCO2_OFFICIAL = ISCO2_OFFICIAL;
+
+/* Official ISCO-08 minor-group (3-digit) titles — used for ISCO-3 display names
+   so charts never depend on (possibly empty or misspelled) CSV name columns. */
+var ISCO3_OFFICIAL = {
+ 111:"Legislators and Senior Officials",112:"Managing Directors and Chief Executives",
+ 121:"Business Services and Administration Managers",122:"Sales, Marketing and Development Managers",
+ 132:"Manufacturing, Mining, Construction and Distribution Managers",133:"ICT Service Managers",
+ 134:"Professional Services Managers",141:"Hotel and Restaurant Managers",
+ 142:"Retail and Wholesale Trade Managers",143:"Other Services Managers",
+ 211:"Physical and Earth Science Professionals",212:"Mathematicians, Actuaries and Statisticians",
+ 213:"Life Science Professionals",214:"Engineering Professionals (excluding Electrotechnology)",
+ 215:"Electrotechnology Engineers",216:"Architects, Planners, Surveyors and Designers",
+ 221:"Medical Doctors",222:"Nursing and Midwifery Professionals",226:"Other Health Professionals",
+ 232:"Vocational Education Teachers",233:"Secondary Education Teachers",
+ 234:"Primary School and Early Childhood Teachers",235:"Other Teaching Professionals",
+ 241:"Finance Professionals",242:"Administration Professionals",243:"Sales, Marketing and Public Relations Professionals",
+ 251:"Software and Applications Developers and Analysts",252:"Database and Network Professionals",
+ 261:"Legal Professionals",262:"Librarians, Archivists and Curators",263:"Social and Religious Professionals",
+ 264:"Authors, Journalists and Linguists",265:"Creative and Performing Artists",
+ 311:"Physical and Engineering Science Technicians",312:"Mining, Manufacturing and Construction Supervisors",
+ 313:"Process Control Technicians",314:"Life Science Technicians and Related Associate Professionals",
+ 315:"Ship and Aircraft Controllers and Technicians",321:"Medical and Pharmaceutical Technicians",
+ 322:"Nursing and Midwifery Associate Professionals",325:"Other Health Associate Professionals",
+ 331:"Financial and Mathematical Associate Professionals",332:"Sales and Purchasing Agents and Brokers",
+ 333:"Business Services Agents",334:"Administrative and Specialized Secretaries",
+ 335:"Regulatory Government Associate Professionals",341:"Legal, Social and Religious Associate Professionals",
+ 342:"Sports and Fitness Workers",343:"Artistic, Cultural and Culinary Associate Professionals",
+ 351:"ICT Operations and User Support Technicians",352:"Telecommunications and Broadcasting Technicians",
+ 411:"General Office Clerks",412:"Secretaries (General)",413:"Keyboard Operators",
+ 421:"Tellers, Money Collectors and Related Clerks",422:"Client Information Workers",
+ 431:"Numerical Clerks",432:"Material-recording and Transport Clerks",441:"Other Clerical Support Workers",
+ 511:"Travel Attendants, Conductors and Guides",512:"Cooks",513:"Waiters and Bartenders",
+ 514:"Hairdressers, Beauticians and Related Workers",515:"Building and Housekeeping Supervisors",
+ 516:"Other Personal Services Workers",522:"Shop Salespersons",523:"Cashiers and Ticket Clerks",
+ 524:"Other Sales Workers",531:"Child Care Workers and Teachers Aides",532:"Personal Care Workers in Health Services",
+ 541:"Protective Services Workers",611:"Market Gardeners and Crop Growers",612:"Animal Producers",
+ 711:"Building Frame and Related Trades Workers",712:"Building Finishers and Related Trades Workers",
+ 713:"Painters, Building Structure Cleaners and Related Trades Workers",
+ 721:"Sheet and Structural Metal Workers, Moulders and Welders",722:"Blacksmiths, Toolmakers and Related Trades Workers",
+ 723:"Machinery Mechanics and Repairers",731:"Handicraft Workers",732:"Printing Trades Workers",
+ 741:"Electrical Equipment Installers and Repairers",742:"Electronics and Telecommunications Installers and Repairers",
+ 751:"Food Processing and Related Trades Workers",752:"Wood Treaters, Cabinet-makers and Related Trades Workers",
+ 753:"Garment and Related Trades Workers",754:"Other Craft and Related Workers",
+ 811:"Mining and Mineral Processing Plant Operators",812:"Metal Processing and Finishing Plant Operators",
+ 813:"Chemical and Photographic Products Plant and Machine Operators",814:"Rubber, Plastic and Paper Products Machine Operators",
+ 815:"Textile, Fur and Leather Products Machine Operators",816:"Food and Related Products Machine Operators",
+ 817:"Wood Processing and Papermaking Plant Operators",818:"Other Stationary Plant and Machine Operators",
+ 821:"Assemblers",831:"Locomotive Engine Drivers and Related Workers",832:"Car, Van and Motorcycle Drivers",
+ 833:"Heavy Truck and Bus Drivers",834:"Mobile Plant Operators",
+ 911:"Domestic, Hotel and Office Cleaners and Helpers",912:"Vehicle, Window, Laundry and Other Hand Cleaning Workers",
+ 921:"Agricultural, Forestry and Fishery Labourers",931:"Mining and Construction Labourers",
+ 932:"Manufacturing Labourers",933:"Transport and Storage Labourers",941:"Food Preparation Assistants",
+ 961:"Refuse Workers",962:"Other Elementary Workers"
+};
+if (typeof window !== "undefined") window.ISCO3_OFFICIAL = ISCO3_OFFICIAL;
+
 var ISCO4_OFFICIAL = {
  1120:"Managing Directors and Chief Executives",1211:"Finance Managers",1212:"Human Resource Managers",
  1213:"Policy and Planning Managers",1219:"Business Services and Administration Managers n.e.c.",
@@ -210,7 +290,7 @@ function loadSectorData(sectorId) {
     var rows = parsed.data || [];
     var headers = (parsed.meta && parsed.meta.fields) || (rows[0] ? Object.keys(rows[0]) : []);
 
-    var built = buildDATA(rows, { url: url, delimiter: delim, bytes: text.length, headers: headers });
+    var built = buildDATA(rows, { url: url, delimiter: delim, bytes: text.length, headers: headers }, sector);
     if (!built.rows.length) {
       /* Parsed fine but nothing survived the in-scope/classified filter — tell
          the user exactly which required columns are missing (if any).          */
@@ -230,19 +310,15 @@ function loadSectorData(sectorId) {
 /* ============================================================================
    buildDATA(rawRows, diag) -> DATA
    ============================================================================ */
-function buildDATA(rawRows, diag) {
-  diag = diag || {};
+function buildDATA(rawRows, diag, sector) {
+  diag = diag || {}; sector = sector || {};
 
   /* 1. Normalise + keep in-scope, classified postings; preserve raw columns. */
   var recs = [];
   rawRows.forEach(function (raw0) {
     var row = normaliseRow(raw0);
-    var scope = pick(row, ["Scope_Category"]);
-    var cat   = pick(row, ["Job_Category"]);
     var isco4code = pick(row, ["ISCO_4", "ISCO_Code", "ISCO4"]);
-    if (scope === "Out of Scope") return;
-    if (cat === "Out of Scope" || cat === "CLASSIFICATION_FAILED") return;
-    if (!isco4code) return;
+    /* Every scraped posting is used — no scope filtering. */
 
     var dRaw = pick(row, ["Date_Posted", "Date_Scraped"]);
     var d = dRaw ? new Date(dRaw) : null;
@@ -254,17 +330,23 @@ function buildDATA(rawRows, diag) {
 
     recs.push({
       state:    pick(row, ["State", "Bundesland", "Region"]) || "",
-      isic:     pick(row, ["Employer_Sector", "Employer_Category", "Employer_Type", "ISIC"]) || "Not specified",
+      isic:     (function(){
+                   var v = (sector.catColumn ? pick(row, [sector.catColumn]) : null) ||
+                           pick(row, ["Job_Category", "Employer_Sector", "Employer_Category", "Employer_Type", "ISIC"]) ||
+                           "Not specified";
+                   return String(v).replace(/\s*\(ISCO\s*\d+\)\s*$/i, "").trim() || "Not specified";
+                 })(),
       isco2:    parseInt(pick(row, ["ISCO_2", "ISCO2"]), 10),
       isco3:    parseInt(pick(row, ["ISCO_3", "ISCO3"]), 10),
       isco4code:parseInt(isco4code, 10),
       isco4nm:  (function(){
+                   var c4 = parseInt(isco4code, 10);
+                   if (isNaN(c4)) return "Unclassified";
                    var nm = pick(row, ["ISCO_4_name", "ISCO_Occupation_Title", "ISCO_4_Name", "Occupation"]);
                    if (nm && !/^ISCO\s*\d+/i.test(nm) && !/^\d{3,4}(\.0)?$/.test(nm)) return nm;
-                   var c4 = parseInt(isco4code, 10);
-                   return ISCO4_OFFICIAL[c4] ||
-                          pick(row, ["ISCO_3_name", "ISCO_3_Name"]) ||
-                          ("ISCO " + c4);
+                   var c3 = parseInt(pick(row, ["ISCO_3", "ISCO3"]), 10);
+                   return ISCO4_OFFICIAL[c4] || ISCO3_OFFICIAL[c3] ||
+                          pick(row, ["ISCO_3_name", "ISCO_3_Name"]) || "Unclassified";
                  })(),
       emp:      pick(row, ["Employment_type", "Employment_Type", "Contract_Type"]) || "Not specified",
       date:     d,
@@ -347,22 +429,23 @@ function buildDATA(rawRows, diag) {
     }
     if (!isNaN(r.isco3)) {
       var code = r.isco3;
-      var rg = byRole[code] || (byRole[code] = { count: 0, names: {}, emps: {}, states: {}, pt: 0 });
-      rg.count++; rg.names[r.isco4nm] = (rg.names[r.isco4nm] || 0) + 1;
+      byIsco3[code] = byIsco3[code] || { count: 0, names: {} };
+      byIsco3[code].count++; byIsco3[code].names[r.isco4nm] = (byIsco3[code].names[r.isco4nm] || 0) + 1;
+    }
+    if (!isNaN(r.isco4code)) {
+      /* Role Analysis operates at the ISCO-4 unit-group level. */
+      var k4 = r.isco4code;
+      var rg = byRole[k4] || (byRole[k4] = { count: 0, name: r.isco4nm, isco3: r.isco3, emps: {}, states: {}, pt: 0 });
+      rg.count++;
       rg.emps[r.isic] = (rg.emps[r.isic] || 0) + 1;
       if (r.state) rg.states[r.state] = (rg.states[r.state] || 0) + 1;
       if (isPartTime(r.emp)) rg.pt++;
 
-      byIsco3[code] = byIsco3[code] || { count: 0, names: {} };
-      byIsco3[code].count++; byIsco3[code].names[r.isco4nm] = (byIsco3[code].names[r.isco4nm] || 0) + 1;
-
-      var cr = coRole[code] || (coRole[code] = {});
+      var cr = coRole[k4] || (coRole[k4] = {});
       var e = cr[r.company] || (cr[r.company] = { count: 0, isic: r.isic }); e.count++;
-      var cs = coSec[code] || (coSec[code] = {});
+      var cs = coSec[k4] || (coSec[k4] = {});
       var ss = cs[r.isic] || (cs[r.isic] = {}); ss[r.company] = (ss[r.company] || 0) + 1;
-    }
-    if (!isNaN(r.isco4code)) {
-      var k4 = r.isco4code;
+
       byIsco4[k4] = byIsco4[k4] || { count: 0, name: r.isco4nm, isco3: r.isco3 };
       byIsco4[k4].count++;
     }
@@ -373,13 +456,15 @@ function buildDATA(rawRows, diag) {
   /* 5. roleTable / roleGroups. */
   var roleTable = Object.keys(byRole).map(function (code) {
     var rg = byRole[code];
-    return { isco3: parseInt(code, 10), name: topKey(rg.names) || ("ISCO " + code), count: rg.count,
+    return { isco4: parseInt(code, 10), isco3: rg.isco3, name: rg.name || ("ISCO " + code), count: rg.count,
              ptPct: rg.count ? +(rg.pt / rg.count * 100).toFixed(1) : 0,
-             topEmp: topKey(rg.emps) || "—", topState: topKey(rg.states) || "—" };
+             topEmp: topKey(rg.emps) || "\u2014", topState: topKey(rg.states) || "\u2014" };
   }).sort(function (a, b) { return b.count - a.count; });
 
+  /* Role Analysis groups = the six largest ISCO-4 unit groups. */
   var roleGroups = roleTable.slice(0, 6).map(function (r, i) {
-    return { code: r.isco3, name: (typeof ISCO3_NAMES !== "undefined" && ISCO3_NAMES[r.isco3]) || r.name,
+    return { code: r.isco4, name: r.name, isco3: r.isco3,
+             idx: (isco4Ix[r.name] != null ? isco4Ix[r.name] : -1),
              color: ROLE_PALETTE[i % ROLE_PALETTE.length] };
   });
 

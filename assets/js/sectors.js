@@ -16,7 +16,8 @@ const SECTORS = [
     tagline: "Nurses, doctors, care & allied health",
     scope: "ISCO 22 · 32 · 53", accent: "#0F5B5A",
     source: "StepStone Germany",
-    kpiNoun: "Clinical Healthcare",     // used in KPI/alert copy
+    kpiNoun: "Clinical Healthcare",
+    catColumn: "Employer_Category", catLabel: "Employer Sector", catLabelPlural: "Employer Sectors",     // used in KPI/alert copy
     /* Optional narrative tabs loaded from /content at runtime. Remove to hide. */
     staticTabs: [
       { id: "about", label: "About & Methods",        file: "content/healthcare-about.html" },
@@ -29,6 +30,7 @@ const SECTORS = [
     tagline: "Hotels, kitchens, service & events",
     scope: "ISCO 14 · 51 · 91 · 94", accent: "#C4880C",
     source: "StepStone Germany", kpiNoun: "Hospitality",
+    catColumn: "Job_Category", catLabel: "Job Category", catLabelPlural: "Job Categories",
     staticTabs: [
       { id: "about", label: "About & Methods",        file: "content/hospitality-about.html" },
       { id: "quals", label: "Qualifications & Skills", file: "content/hospitality-quals.html" }
@@ -48,6 +50,7 @@ const SECTORS = [
     tagline: "Drivers, warehouse, dispatch & supply chain",
     scope: "ISCO 83 · 93 · 43", accent: "#3B6E8F",
     source: "StepStone Germany", kpiNoun: "Logistics",
+    catColumn: "Job_Category", catLabel: "Job Category", catLabelPlural: "Job Categories",
     staticTabs: [
       { id: "about", label: "About & Methods",        file: "content/logistics-about.html" },
       { id: "quals", label: "Qualifications & Skills", file: "content/logistics-quals.html" }
