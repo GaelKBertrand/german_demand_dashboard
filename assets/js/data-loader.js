@@ -76,6 +76,51 @@ function sniffDelimiter(text) {
    ============================================================================ */
 
 
+
+/* Official ISIC Rev.4 DIVISION (2-digit) titles — the employer-sector level
+   used across the dashboard. Derived from the 4-digit class in the data. */
+var ISIC2_DIVISIONS = {
+ "01":"Crop and animal production, hunting and related service activities","02":"Forestry and logging",
+ "03":"Fishing and aquaculture","05":"Mining of coal and lignite","06":"Extraction of crude petroleum and natural gas",
+ "07":"Mining of metal ores","08":"Other mining and quarrying","09":"Mining support service activities",
+ "10":"Manufacture of food products","11":"Manufacture of beverages","12":"Manufacture of tobacco products",
+ "13":"Manufacture of textiles","14":"Manufacture of wearing apparel","15":"Manufacture of leather and related products",
+ "16":"Manufacture of wood and wood products, except furniture","17":"Manufacture of paper and paper products",
+ "18":"Printing and reproduction of recorded media","19":"Manufacture of coke and refined petroleum products",
+ "20":"Manufacture of chemicals and chemical products","21":"Manufacture of pharmaceutical products",
+ "22":"Manufacture of rubber and plastics products","23":"Manufacture of other non-metallic mineral products",
+ "24":"Manufacture of basic metals","25":"Manufacture of fabricated metal products",
+ "26":"Manufacture of computer, electronic and optical products","27":"Manufacture of electrical equipment",
+ "28":"Manufacture of machinery and equipment n.e.c.","29":"Manufacture of motor vehicles and trailers",
+ "30":"Manufacture of other transport equipment","31":"Manufacture of furniture","32":"Other manufacturing",
+ "33":"Repair and installation of machinery and equipment","35":"Electricity, gas, steam and air conditioning supply",
+ "36":"Water collection, treatment and supply","37":"Sewerage",
+ "38":"Waste collection, treatment and disposal; materials recovery","39":"Remediation and other waste management services",
+ "41":"Construction of buildings","42":"Civil engineering","43":"Specialized construction activities",
+ "45":"Wholesale and retail trade and repair of motor vehicles","46":"Wholesale trade, except motor vehicles",
+ "47":"Retail trade, except motor vehicles","49":"Land transport and transport via pipelines","50":"Water transport",
+ "51":"Air transport","52":"Warehousing and support activities for transportation","53":"Postal and courier activities",
+ "55":"Accommodation","56":"Food and beverage service activities","58":"Publishing activities",
+ "59":"Motion picture, video and television production","60":"Programming and broadcasting activities",
+ "61":"Telecommunications","62":"Computer programming and consultancy","63":"Information service activities",
+ "64":"Financial service activities, except insurance","65":"Insurance, reinsurance and pension funding",
+ "66":"Activities auxiliary to financial services","68":"Real estate activities","69":"Legal and accounting activities",
+ "70":"Head offices and management consultancy","71":"Architectural and engineering activities; technical testing",
+ "72":"Scientific research and development","73":"Advertising and market research",
+ "74":"Other professional, scientific and technical activities","75":"Veterinary activities",
+ "77":"Rental and leasing activities","78":"Employment activities",
+ "79":"Travel agency, tour operator and reservation services","80":"Security and investigation activities",
+ "81":"Services to buildings and landscape activities","82":"Office administrative and business support activities",
+ "84":"Public administration and defence; compulsory social security","85":"Education","86":"Human health activities",
+ "87":"Residential care activities","88":"Social work activities without accommodation",
+ "90":"Creative, arts and entertainment activities","91":"Libraries, archives, museums and cultural activities",
+ "92":"Gambling and betting activities","93":"Sports, amusement and recreation activities",
+ "94":"Activities of membership organizations","95":"Repair of computers and personal and household goods",
+ "96":"Other personal service activities","97":"Households as employers of domestic personnel",
+ "98":"Undifferentiated activities of private households","99":"Extraterritorial organizations and bodies"
+};
+if (typeof window !== "undefined") window.ISIC2_DIVISIONS = ISIC2_DIVISIONS;
+
 /* Official ISCO-08 sub-major group (2-digit) titles. */
 var ISCO2_OFFICIAL = {
  11:"Chief Executives, Senior Officials and Legislators",12:"Administrative and Commercial Managers",
@@ -331,10 +376,17 @@ function buildDATA(rawRows, diag, sector) {
     recs.push({
       state:    pick(row, ["State", "Bundesland", "Region"]) || "",
       isic:     (function(){
+                   /* Employer sectors come DIRECTLY from the sheet's
+                      Employer_Category column (which carries ISIC-2 names).
+                      No derivation from code columns. */
                    var v = (sector.catColumn ? pick(row, [sector.catColumn]) : null) ||
-                           pick(row, ["Job_Category", "Employer_Sector", "Employer_Category", "Employer_Type", "ISIC"]) ||
+                           pick(row, ["Employer_Category", "Employer_Sector", "Job_Category", "Employer_Type", "ISIC"]) ||
                            "Not specified";
-                   return String(v).replace(/\s*\(ISCO\s*\d+\)\s*$/i, "").trim() || "Not specified";
+                   v = String(v).replace(/\s*\(ISCO\s*\d+\)\s*$/i, "");
+                   /* reviewer request: drop the word "activities" from display names */
+                   v = v.replace(/\bactivities\b/gi, "").replace(/\s{2,}/g, " ")
+                        .replace(/\s+,/g, ",").replace(/^[\s,]+|[\s,]+$/g, "");
+                   return v || "Not specified";
                  })(),
       isco2:    parseInt(pick(row, ["ISCO_2", "ISCO2"]), 10),
       isco3:    parseInt(pick(row, ["ISCO_3", "ISCO3"]), 10),
@@ -389,7 +441,12 @@ function buildDATA(rawRows, diag, sector) {
   var isco4CodeByName = {};
   recs.forEach(function (r) { if (!(r.isco4nm in isco4CodeByName) && !isNaN(r.isco4code)) isco4CodeByName[r.isco4nm] = r.isco4code; });
   var isicCodeByName = {};
-  recs.forEach(function (r) { if (r.isicCode && !(r.isic in isicCodeByName)) isicCodeByName[r.isic] = String(r.isicCode).replace(/\.0$/, ""); });
+  recs.forEach(function (r) {
+    if (r.isicCode && !(r.isic in isicCodeByName)) {
+      var c = String(r.isicCode).replace(/\.0$/, "").trim();
+      isicCodeByName[r.isic] = c.length >= 2 ? c.slice(0, 2) : c;   /* ISIC-2 division code */
+    }
+  });
 
   /* 3. Week buckets. */
   var dated = recs.map(function (r) { return r.date; }).filter(Boolean);

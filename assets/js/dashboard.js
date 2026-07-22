@@ -243,7 +243,7 @@ function renderAll(){
   document.getElementById('filter-count').textContent = fmt(rows.length) + ' postings';
   updateKPIs(rows); renderAlert(rows);
   renderTop10(rows); renderCrossTab(rows);
-  renderTrend(rows); renderIsicBar(rows);
+  renderTrend(rows); renderIsicBar(rows); renderOverviewRegions(rows);
   if (APP.activeTab==='roles')      renderRoleTab(rows, APP.activeRole);
   if (APP.activeTab==='regional'){  renderStateBar(rows); renderStateTable(rows); }
   if (APP.activeTab==='explorer')   renderExplorer();
@@ -381,72 +381,68 @@ function renderTop10(rows){
 function renderIsicBar(rows){
   var total=rows.length, c={};
   rows.forEach(function(r){ if(r[1]>=0){ var cat=DATA.lookup.isic[r[1]]; c[cat]=(c[cat]||0)+1; } });
-  var items=Object.keys(c).map(function(k){ return { label:k, count:c[k], color:isicColor(k) }; });
+  var items=Object.keys(c).map(function(k){ return { label:k, count:c[k], color:isicColor(k) }; })
+    .sort(function(a,b){ return b.count-a.count; }).slice(0,10);
   hBar('chart-isic', items, { total:total, wrap:24,
-       ofWhat:'postings', title:'Postings by '+catL() });
+       ofWhat:'postings', title:'Top 10 '+catPL()+' by postings' });
+}
+
+/* ======= OVERVIEW REGIONS ================================================= */
+function renderOverviewRegions(rows){
+  var total=rows.length, c={};
+  rows.forEach(function(r){ if(r[0]>=0){ var st=DATA.lookup.states[r[0]]; c[st]=(c[st]||0)+1; } });
+  var ranked=rankOf(c,total).slice(0,10);
+  pareto('ov-region-pareto', ranked, total, 'Regions ranked by posting volume');
 }
 
 /* ======= CROSS-TAB ======================================================== */
 function renderCrossTab(rows){
-  /* One bar per leading ISCO-4 occupation; segments show which categories the
-     postings come from, as % of that occupation's postings (each bar = 100%). */
+  /* Percentage grid: rows are the leading ISCO-4 occupations, columns the top
+     employer sectors; each cell shows what share of that occupation's postings
+     the sector accounts for. Sized generously so nothing is cramped. */
   var grps = DATA.roleGroups.map(function(g){ return { code:g.code, idx:g.idx, name:g.name }; });
-  var matrix={}, totals={};
+  var matrix={}, totals={}, catCount={};
   grps.forEach(function(g){ matrix[g.code]={}; totals[g.code]=0; });
-  var catCount={};
   rows.forEach(function(r){
     if(r[1]<0) return;
     var g=grps.find(function(x){return x.idx===r[4];}); if(!g) return;
     var cat=DATA.lookup.isic[r[1]];
     matrix[g.code][cat]=(matrix[g.code][cat]||0)+1;
-    totals[g.code]=(totals[g.code]||0)+1;
+    totals[g.code]++;
     catCount[cat]=(catCount[cat]||0)+1;
   });
-  var cats=Object.keys(catCount).sort(function(a,b){ return catCount[b]-catCount[a]; }).slice(0,7);
+  var cats=Object.keys(catCount).sort(function(a,b){ return catCount[b]-catCount[a]; }).slice(0,8);
 
   var el=document.getElementById('chart-cross');
-  if(el) el.style.height=Math.max(280, grps.length*46 + 150)+'px';
+  if(el) el.style.height=Math.max(320, grps.length*62 + 190)+'px';
   var order=grps.slice().reverse();
-  var yLab=order.map(function(g){ return wrapLabel(g.name, 26); });
-  var HOVER={bgcolor:'#111827', bordercolor:'#111827', font:{color:'#FFFFFF', size:12, family:'Outfit'}};
+  var z=order.map(function(g){ return cats.map(function(c){
+        var n=matrix[g.code][c]||0;
+        return totals[g.code] ? +(n/totals[g.code]*100).toFixed(1) : 0; }); });
+  var custom=order.map(function(g){ return cats.map(function(c){
+        var n=matrix[g.code][c]||0;
+        var pc=totals[g.code] ? +(n/totals[g.code]*100).toFixed(1) : 0;
+        return [g.name, c, n, pc]; }); });
+  var txt=z.map(function(row){ return row.map(function(v){ return v>=1 ? v+'%' : ''; }); });
 
-  function pctOf(g,cat){ var n=matrix[g.code][cat]||0; return totals[g.code]?+(n/totals[g.code]*100).toFixed(1):0; }
-  function cntOf(g,cat){ return matrix[g.code][cat]||0; }
-
-  var traces=cats.map(function(cat,i){
-    return { type:'bar', orientation:'h', name:cat, y:yLab,
-      x: order.map(function(g){ return pctOf(g,cat); }),
-      customdata: order.map(function(g){ return [g.name, cat, cntOf(g,cat), pctOf(g,cat)]; }),
-      marker:{ color: CAT[i % CAT.length] },
-      hoverlabel: HOVER,
-      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>' };
-  });
-  traces.push({ type:'bar', orientation:'h', name:'Other', y:yLab,
-    x: order.map(function(g){
-         var known=cats.reduce(function(a,c){return a+cntOf(g,c);},0);
-         return totals[g.code]?+((totals[g.code]-known)/totals[g.code]*100).toFixed(1):0; }),
-    customdata: order.map(function(g){
-         var known=cats.reduce(function(a,c){return a+cntOf(g,c);},0);
-         var n=Math.max(0,totals[g.code]-known);
-         var p=totals[g.code]?+(n/totals[g.code]*100).toFixed(1):0;
-         return [g.name,'All other '+catPL(),n,p]; }),
-    marker:{ color:'#C9D8D8' },
-    hoverlabel: HOVER,
-    hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>' });
-
-  drawChart('chart-cross', traces, {
-    barmode:'stack', showlegend:true,
-    yaxis:axC({ tickfont:{size:10, color:'#2A3535'} }),
-    xaxis:axV({ range:[0,100], ticksuffix:'%',
-                title:{text:'Share of the occupation\u2019s postings', font:{size:10, color:PAL.soft}} }),
-    legend:{orientation:'h', y:-0.16, font:{size:9, color:PAL.mid}},
-    margin:{l:8, r:16, t:10, b:64}
+  drawChart('chart-cross', [{
+    type:'heatmap', z:z,
+    x:cats.map(function(c){ return wrapLabel(c,16); }),
+    y:order.map(function(g){ return wrapLabel(g.name,24); }),
+    customdata:custom, colorscale:SEQ, xgap:4, ygap:4,
+    text:txt, texttemplate:'%{text}', textfont:{size:11, color:'#123'},
+    hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>',
+    colorbar:{title:{text:'% of occupation',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9},outlinewidth:0}
+  }], {
+    xaxis:{tickangle:0,tickfont:{size:10,color:'#2A3535'},fixedrange:true,automargin:true},
+    yaxis:{automargin:true,tickfont:{size:10.5,color:'#2A3535'},fixedrange:true},
+    margin:{l:8,r:8,t:10,b:8}
   },
-  {title:catC()+' by workforce group',
-   cols:['Occupation'].concat(cats).concat(['Other']),
-   rows:grps.map(function(g){
-     var vals=cats.map(function(c){ return pctOf(g,c); });
-     return [g.name].concat(vals).concat([+(100-vals.reduce(function(a,b){return a+b;},0)).toFixed(1)]); })});
+  {title:catC()+' by workforce group (% of occupation)',
+   cols:['Occupation'].concat(cats),
+   rows:grps.map(function(g){ return [g.name].concat(cats.map(function(c){
+     var n=matrix[g.code][c]||0;
+     return totals[g.code] ? +(n/totals[g.code]*100).toFixed(1) : 0; })); })});
 }
 function wrapName(n){
   var w=n.split(' '); if(w.length<2) return n;
@@ -473,7 +469,8 @@ function renderTrend(rows){
     return {x:wl,y:y,type:'scatter',mode:'lines+markers',name:nm,
       line:{color:col,width:2.5,shape:'spline'},marker:{color:col,size:5},
       fill:'tozeroy',fillcolor:col+'14',
-      hovertemplate:'%{y:,d} postings<extra><b>'+nm+'</b></extra>'};
+      customdata:wl.map(function(w,wi){ return [nm, w, y[wi]]; }),
+      hovertemplate:'<b>'+nm+'</b>: %{y:,d} postings<extra></extra>'};
   });
   drawChart('chart-trend',traces,{
     hovermode:'x unified',
@@ -525,7 +522,7 @@ function buildRoleTab(){
       '<div class="card card-b"><div class="card-head">Top Hiring Companies</div>'+
         '<div class="card-sub">Employers with the most openings (all states). Colour indicates '+catL()+'.</div>'+
         '<div class="card-body"><div id="rc-cos-'+g.code+'" style="height:330px"></div></div></div>'+
-      '<div class="card card-g" style="margin-top:14px"><div class="card-head">Top 10 Employers by '+catC()+'</div>'+
+      '<div class="card card-g" style="margin-top:14px"><div class="card-head">Top 10 Employers &amp; Top 10 '+catPC()+'</div>'+
         '<div class="card-sub">Leading hiring organisations within each '+catL()+' for this occupation</div>'+
         '<div class="tbl-wrap" id="rc-empbysec-'+g.code+'"></div></div>';
     wrap.appendChild(p);
@@ -584,7 +581,7 @@ function renderRoleTab(rows, code){
   /* Employer sectors */
   var itemsS=Object.keys(isicc).map(function(k){
     return { label:k, count:isicc[k], color:isicColor(k) };
-  });
+  }).sort(function(a,b){ return b.count-a.count; }).slice(0,10);
   hBar('rc-isic-'+code, itemsS, { total:tot, wrap:24,
        ofWhat:'postings in this occupation', title:g.name+' \u2014 '+catPL() });
 
@@ -601,18 +598,36 @@ function renderRoleTab(rows, code){
 function renderEmployersBySector(code){
   var el=document.getElementById('rc-empbysec-'+code); if(!el) return;
   var bySector=(DATA.sectorEmployers && DATA.sectorEmployers[String(code)]) || {};
-  var sectors=Object.keys(bySector).filter(function(s){ return bySector[s]&&bySector[s].length>0; })
+  var cos=(DATA.companies[String(code)]||[]);
+  if(!cos.length && !Object.keys(bySector).length){
+    el.innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No employer data available.</p>'; return;
+  }
+
+  /* Table A \u2014 the ten most active employers for this occupation, flat. */
+  var html='<div class="card-head" style="padding-left:0;font-size:12px">Top 10 Employers</div>'+
+    '<table class="data-tbl" style="margin-bottom:16px"><thead><tr>'+
+    '<th style="width:28px;text-align:center">#</th><th>Employer</th><th>'+catC()+'</th>'+
+    '<th style="text-align:right">Postings</th></tr></thead><tbody>';
+  cos.slice(0,10).forEach(function(e,i){
+    html+='<tr><td style="color:#7A9C9C;font-size:10px;text-align:center">'+(i+1)+'</td>'+
+      '<td><b>'+esc(e.name)+'</b></td><td style="color:'+isicColor(e.isic)+'">'+esc(e.isic||'\u2014')+'</td>'+
+      '<td class="cnt" style="text-align:right">'+fmt(e.count)+'</td></tr>';
+  });
+  html+='</tbody></table>';
+
+  /* Table B \u2014 the ten largest sectors for this occupation, three employers each. */
+  var sectors=Object.keys(bySector).filter(function(s2){ return bySector[s2]&&bySector[s2].length>0; })
     .sort(function(a,b){
       var sa=bySector[a].reduce(function(x,e){return x+e.count;},0);
       var sb=bySector[b].reduce(function(x,e){return x+e.count;},0);
       return sb-sa;
-    });
-  if(!sectors.length){ el.innerHTML='<p style="padding:12px;color:#7A9C9C;font-size:11px">No employer data available.</p>'; return; }
-  var html='<table class="data-tbl"><thead><tr>'+
+    }).slice(0,10);
+  html+='<div class="card-head" style="padding-left:0;font-size:12px">Top 10 '+catPC()+' \u00b7 leading employers in each</div>'+
+    '<table class="data-tbl"><thead><tr>'+
     '<th style="width:36%">'+catC()+'</th><th style="width:28px;text-align:center">#</th>'+
     '<th>Employer</th><th style="text-align:right">Postings</th></tr></thead><tbody>';
   sectors.forEach(function(sector){
-    var emps=(bySector[sector]||[]).slice(0,10), col=isicColor(sector);
+    var emps=(bySector[sector]||[]).slice(0,3), col=isicColor(sector);
     emps.forEach(function(e,i){
       html+='<tr>';
       if(i===0) html+='<td rowspan="'+emps.length+'" style="font-weight:600;color:'+col+';vertical-align:middle;border-left:3px solid '+col+'">'+esc(sector)+'</td>';
@@ -660,6 +675,16 @@ function renderMap(){
           {sticky:false,direction:'auto'});
         layer.on('mouseover',function(){ this.setStyle({weight:3,color:'#D4940A',fillOpacity:0.95}); });
         layer.on('mouseout', function(){ this.setStyle({weight:1.5,color:'white',fillOpacity:0.85}); });
+        /* click pins the same info with a Copy button (shared card from chart-kit) */
+        layer.on('click', function(ev){
+          if (typeof showCopyCard === 'function'){
+            var lines=[en, d.hc.toLocaleString('en-US')+' postings',
+                       'Top roles: '+d.topRoles.join('; '),
+                       'Top '+catL()+': '+d.topEmp];
+            showCopyCard(lines, ev.originalEvent);
+            if (ev.originalEvent) ev.originalEvent.stopPropagation();
+          }
+        });
       }
     }
   }).addTo(APP.leafletMap);
@@ -709,6 +734,75 @@ function ensureIdx(){
   if(!_rowToIdx){ _rowToIdx=new Map(); DATA.rows.forEach(function(r,i){ _rowToIdx.set(r,i); }); }
 }
 
+
+/* ---- ISIC Rev.4 reference guide: what businesses each category includes.
+   Keyed by 4-digit ISIC code; based on the official explanatory notes. ------ */
+var ISIC_GUIDE = {
+ '55':'Hotels, motels, inns, guesthouses, hostels, holiday and other short-stay accommodation, camping grounds',
+ '56':'Restaurants, cafés, bars, pubs, fast food, event catering, canteens and contract catering',
+ '47':'All retail: supermarkets, food shops, bakery and butcher counters, department and specialised stores',
+ '46':'Wholesalers of food, beverages, household goods and other merchandise supplying the trade',
+ '45':'Car and motorcycle dealers, vehicle workshops and repair, parts retail',
+ '10':'Food manufacturing: bakeries, meat and dairy processing, confectionery, prepared meals',
+ '11':'Beverage producers: breweries, wineries, soft drinks and mineral waters',
+ '88':'Non-residential social work: visiting care, day-care and home help for the elderly and disabled, family services',
+ '87':'Residential care homes and nursing facilities with accommodation',
+ '86':'Hospitals, medical and dental practices, physiotherapy, laboratories, ambulance services',
+ '85':'Schools, universities, vocational training, tutoring and educational support',
+ '84':'Public administration: municipal and government bodies, social security institutions',
+ '63':'Information services including web portals, job boards and data processing/hosting',
+ '62':'Software development, IT consultancy and computer facilities management',
+ '61':'Telecommunications operators',
+ '58':'Publishers of newspapers, journals, books and software',
+ '78':'Employment services: temporary work agencies (Zeitarbeit), recruitment and placement firms',
+ '71':'Architecture and engineering offices, technical testing and inspection',
+ '70':'Company head offices and management consultancy',
+ '69':'Law firms, accountants, auditors and tax advisers',
+ '68':'Real estate: property management, letting, estate agencies',
+ '64':'Banks and other financial institutions',
+ '65':'Insurance and pension funding companies',
+ '66':'Financial brokerage, fund management and other auxiliary financial services',
+ '41':'Building construction companies and property developers',
+ '42':'Civil engineering: roads, railways, utility networks',
+ '43':'Specialised construction trades: electrical, plumbing, joinery, finishing, roofing',
+ '49':'Land transport: rail, bus, tram, taxi, road haulage and pipelines',
+ '52':'Warehousing, logistics hubs and support services for transportation',
+ '53':'Postal and courier services',
+ '35':'Electricity, gas, steam and air-conditioning utilities',
+ '38':'Waste collection, treatment, disposal and recycling',
+ '93':'Sports facilities, gyms, amusement parks and recreation services',
+ '90':'Theatres, performing arts and entertainment production',
+ '91':'Libraries, archives, museums and cultural institutions',
+ '92':'Gambling and betting operators',
+ '94':'Membership organisations: chambers, unions, religious and civic bodies',
+ '81':'Facility services: cleaning, building support, landscaping',
+ '82':'Office administrative and business support services, call centres',
+ '79':'Travel agencies, tour operators and reservation services',
+ '80':'Security and investigation services',
+ '96':'Other personal services: hairdressing, laundry, wellness',
+ '95':'Repair of computers and personal and household goods',
+ '77':'Rental and leasing of vehicles, machinery and goods',
+ '72':'Scientific research and development institutes',
+ '73':'Advertising agencies and market research',
+ '74':'Design, photography, translation and other professional services',
+ '75':'Veterinary practices'
+};
+
+function renderIsicGuide(){
+  var el=document.getElementById('explorer-isic-guide'); if(!el) return;
+  var rows=getRows(), c={};
+  rows.forEach(function(r){ if(r[1]>=0){ var n=DATA.lookup.isic[r[1]]; c[n]=(c[n]||0)+1; } });
+  var names=Object.keys(c).sort(function(a,b){ return c[b]-c[a]; });
+  var html='<table class="data-tbl"><thead><tr><th>Employer Sector</th><th>Postings</th><th style="min-width:280px">Includes</th></tr></thead><tbody>';
+  names.forEach(function(name){
+    var code=(DATA.isicCodeByName&&DATA.isicCodeByName[name])||'';   /* internal lookup only, never displayed */
+    var desc=(code&&ISIC_GUIDE[String(code)])||'\u2014';
+    html+='<tr><td><b>'+esc(name)+'</b></td>'+
+      '<td class="cnt">'+fmt(c[name])+'</td><td style="font-size:11px;color:#3A4A4A">'+esc(desc)+'</td></tr>';
+  });
+  el.innerHTML=html+'</tbody></table>';
+}
+
 function renderExplorer(){
   /* Occupation summary at the four-digit ISCO-4 level, respecting active filters. */
   var rows=getRows(), agg={};
@@ -748,15 +842,15 @@ function renderExplorer(){
   var sNames=Object.keys(sAgg).sort(function(a,b){ return sAgg[b].count-sAgg[a].count; });
   var el2=document.getElementById('explorer-isic-table');
   if (el2){
-    var h2='<table class="data-tbl"><thead><tr><th>Employer Sector (ISIC-4)</th><th>Code</th><th>Total Postings</th><th>% Open to Part-time</th><th>Top Occupation (ISCO-4)</th><th>Top State</th></tr></thead><tbody>';
+    var h2='<table class="data-tbl"><thead><tr><th>Employer Sector</th><th>Total Postings</th><th>% Open to Part-time</th><th>Top Occupation (ISCO-4)</th><th>Top State</th></tr></thead><tbody>';
     sNames.forEach(function(name){
       var a=sAgg[name];
       var ptPct=a.count?+(a.pt/a.count*100).toFixed(1):0;
-      var code=(DATA.isicCodeByName&&DATA.isicCodeByName[name])||'\u2014';
-      h2+='<tr><td><b>'+esc(name)+'</b></td><td><span class="badge badge-g">'+esc(String(code))+'</span></td><td class="cnt">'+fmt(a.count)+'</td><td class="'+(ptPct>60?'gld':'')+'">'+ptPct+'%</td><td>'+esc(topK(a.occ))+'</td><td>'+esc(topK(a.states))+'</td></tr>';
+      h2+='<tr><td><b>'+esc(name)+'</b></td><td class="cnt">'+fmt(a.count)+'</td><td class="'+(ptPct>60?'gld':'')+'">'+ptPct+'%</td><td>'+esc(topK(a.occ))+'</td><td>'+esc(topK(a.states))+'</td></tr>';
     });
     el2.innerHTML=h2+'</tbody></table>';
   }
+  renderIsicGuide();
   renderFullTable();
 }
 function explorerSearch(){ EXP_SEARCH=document.getElementById('exp-search').value.toLowerCase(); EXP_PAGE=0; renderFullTable(); }
@@ -1245,37 +1339,41 @@ function tierOccupations(rows){
   var elOS = document.getElementById('tier-occ-sector');
   if (elOS){
     var occNames = top.map(function(d){ return d.label; }).reverse();
-    elOS.style.height = Math.max(300, occNames.length * 40 + 160) + 'px';
-    var yLab = occNames.map(function(o){ return wrapLabel(o, 28); });
-    var tr = topSecs.map(function(sec, i){
-      return { type:'bar', orientation:'h', name:sec, y:yLab,
-        x: occNames.map(function(o){
-             return (byOcc[o]||[]).filter(function(r){ return r[1]>=0 && DATA.lookup.isic[r[1]]===sec; }).length; }),
-        marker:{ color: CAT[i % CAT.length] },
-        hovertemplate:'<b>'+sec+'</b><br>%{x:,} postings<extra></extra>' };
+    elOS.style.height = Math.max(320, occNames.length * 52 + 190) + 'px';
+    var zOS = occNames.map(function(o){
+      var sub = byOcc[o]||[];
+      return topSecs.map(function(sec){
+        var n = sub.filter(function(r){ return r[1]>=0 && DATA.lookup.isic[r[1]]===sec; }).length;
+        return sub.length ? +(n/sub.length*100).toFixed(1) : 0; });
     });
-    tr.push({ type:'bar', orientation:'h', name:'Other sectors', y:yLab,
-      x: occNames.map(function(o){
-           var sub = byOcc[o]||[];
-           var known = sub.filter(function(r){ return r[1]>=0 && topSecs.indexOf(DATA.lookup.isic[r[1]])>=0; }).length;
-           return Math.max(0, sub.length - known); }),
-      marker:{ color:'#C9D8D8' },
-      hovertemplate:'<b>Other sectors</b><br>%{x:,} postings<extra></extra>' });
-    drawChart('tier-occ-sector', tr, {
-      barmode:'stack', showlegend:true,
-      yaxis:axC({ tickfont:{size:9.5, color:PAL.mid} }),
-      xaxis:axV({ title:{text:'Postings', font:{size:10, color:PAL.soft}} }),
-      legend:{orientation:'h', y:-0.14, font:{size:9, color:PAL.mid}},
-      margin:{l:8, r:16, t:10, b:70}
-    }, { title:'Top occupations by '+catL(),
-         cols:['Occupation'].concat(topSecs).concat(['Other sectors']),
-         rows: top.map(function(d){
+    var cOS = occNames.map(function(o){
+      var sub = byOcc[o]||[];
+      return topSecs.map(function(sec){
+        var n = sub.filter(function(r){ return r[1]>=0 && DATA.lookup.isic[r[1]]===sec; }).length;
+        var pc = sub.length ? +(n/sub.length*100).toFixed(1) : 0;
+        return [o, sec, n, pc]; });
+    });
+    drawChart('tier-occ-sector', [{
+      type:'heatmap', z:zOS,
+      x:topSecs.map(function(c){ return wrapLabel(c,16); }),
+      y:occNames.map(function(o){ return wrapLabel(o,26); }),
+      customdata:cOS, colorscale:SEQ, xgap:4, ygap:4,
+      text:zOS.map(function(row){ return row.map(function(v){ return v>=1 ? v+'%' : ''; }); }),
+      texttemplate:'%{text}', textfont:{size:10.5, color:'#123'},
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this occupation<extra></extra>',
+      colorbar:{title:{text:'% of occupation',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9},outlinewidth:0}
+    }], {
+      xaxis:{tickangle:0,tickfont:{size:9.5,color:'#2A3535'},fixedrange:true,automargin:true},
+      yaxis:{automargin:true,tickfont:{size:10,color:'#2A3535'},fixedrange:true},
+      margin:{l:8,r:8,t:10,b:8}
+    }, { title:'Top occupations by '+catL()+' (% of occupation)',
+         cols:['Occupation'].concat(topSecs),
+         rows: top.map(function(d,ri){
            var sub = byOcc[d.label]||[];
-           var known = topSecs.map(function(sec){ return sub.filter(function(r){ return r[1]>=0 && DATA.lookup.isic[r[1]]===sec; }).length; });
-           return [d.label].concat(known).concat([Math.max(0, sub.length - known.reduce(function(a,b){return a+b;},0))]); }) });
+           return [d.label].concat(topSecs.map(function(sec){
+             var n = sub.filter(function(r){ return r[1]>=0 && DATA.lookup.isic[r[1]]===sec; }).length;
+             return sub.length ? +(n/sub.length*100).toFixed(1) : 0; })); }) });
   }
-
-  pareto('tier-occ-pareto', top, total, 'Occupations ranked by share');
   var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>ISCO-4</th><th>Occupation</th><th>Parent ISCO-3</th>'+
           '<th>Postings</th><th>Share</th><th>Leading '+catL()+'</th><th>Leading region</th></tr></thead><tbody>';
   top.forEach(function(d, i){
@@ -1312,26 +1410,8 @@ function tierTitles(rows){
   kpi('ttit-k3', pct(top10t,total)+'%', 'Share Held by the Top 10 Titles', fmt(top10t)+' postings use one of the ten most common titles');
   kpi('ttit-k4', fmt(named), 'Postings with a Usable Title', pct(named,total)+'% of the current selection carries a non-empty title');
 
-  hBar('tier-title-bar', top.map(function(d){ return { label:d.label, count:d.count }; }),
-       { total:total, color:PAL.tealD, wrap:30, ofWhat:'postings',
-         title:'Top '+TIER_N+' advertised job titles' });
-
-  /* map the top titles to the ISCO-4 occupations they were classified into */
-  var mapEl = document.getElementById('tier-title-map');
-  if (mapEl){
-    var occAgg = {};
-    top.forEach(function(d){
-      (byTitle[d.label]||[]).forEach(function(r){
-        if (r[4]>=0){ var o=DATA.lookup.isco4[r[4]]; occAgg[o]=(occAgg[o]||0)+1; }
-      });
-    });
-    var occItems = Object.keys(occAgg).sort(function(a,b){ return occAgg[b]-occAgg[a]; }).slice(0,12)
-      .map(function(o){ return { label:o, code:(DATA.isco4CodeByName&&DATA.isco4CodeByName[o])||'', count:occAgg[o] }; });
-    var mapTot = top.reduce(function(s,d){ return s+d.count; },0);
-    hBar('tier-title-map', occItems,
-         { total:mapTot, color:PAL.gold, wrap:30, ofWhat:'postings under the ranked titles',
-           title:'Occupations behind the top '+TIER_N+' titles' });
-  }
+  /* Charts removed per review \u2014 the Role Analysis tab covers titles per
+     occupation. The KPI strip above and the full ranked table below remain. */
 
   var h = '<table class="data-tbl"><thead><tr><th>Rank</th><th>Advertised job title</th><th>Postings</th><th>Share</th>'+
           '<th>Classified as (ISCO-4)</th><th>Leading '+catL()+'</th></tr></thead><tbody>';
@@ -1381,8 +1461,12 @@ function tierRegions(rows){
         x: topStates,
         y: topStates.map(function(st){
              return (byState[st]||[]).filter(function(r){ return r[4]>=0 && DATA.lookup.isco4[r[4]]===occ; }).length; }),
+        customdata: topStates.map(function(st){
+             var n=(byState[st]||[]).filter(function(r){ return r[4]>=0 && DATA.lookup.isco4[r[4]]===occ; }).length;
+             var t=(byState[st]||[]).length;
+             return [st, occ, n, t?+(n/t*100).toFixed(1):0]; }),
         marker:{ color: CAT[i % CAT.length] },
-        hovertemplate:'<b>%{x}</b><br>%{y:,} postings<extra><b>'+occ+'</b></extra>' };
+        hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this state<extra></extra>' };
     });
     drawChart('tier-region-mix', traces, {
       barmode:'group', showlegend:true,
@@ -1497,10 +1581,18 @@ function tierSectors(rows){
         return sub.length ? +(n/sub.length*100).toFixed(1) : 0;
       });
     });
+    var custG = secs.map(function(s2){
+      var sub = bySec[s2] || [];
+      return states.map(function(st){
+        var n = sub.filter(function(r){ return r[0]>=0 && DATA.lookup.states[r[0]]===st; }).length;
+        return [s2, st, n, sub.length ? +(n/sub.length*100).toFixed(1) : 0];
+      });
+    });
     drawChart('tier-sector-geo', [{
       type:'heatmap', z:z, x:states, y:secs.map(function(s){ return wrapLabel(s, 22); }),
+      customdata:custG,
       colorscale:SEQ, xgap:3, ygap:3,
-      hovertemplate:'<b>%{y}</b><br>%{x}<br>%{z}% of this sector\'s postings<extra></extra>',
+      hovertemplate:'<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]:,} postings \u00b7 %{customdata[3]}% of this sector<extra></extra>',
       colorbar:{title:{text:'% of sector',font:{size:9}},thickness:10,len:0.8,tickfont:{size:9},outlinewidth:0}
     }], {
       xaxis:{tickangle:-30,tickfont:{size:9,color:PAL.mid},fixedrange:true,automargin:true},

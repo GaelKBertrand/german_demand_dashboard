@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<link rel="stylesheet" href="assets/css/dashboard.css?v=20260720-3">
+<link rel="stylesheet" href="assets/css/dashboard.css?v=20260721-3">
 </head>
 <body>
 
@@ -90,7 +90,7 @@
     </div>
     <div class="card card-g">
       <div class="card-head">Who Hires Each Workforce Group?</div>
-      <div class="card-sub">Each bar is one of the leading occupations and always totals 100%. The coloured segments show which employer sectors its postings come from — hover any segment for the exact count and share.</div>
+      <div class="card-sub">A percentage grid: each row is one of the leading occupations, each column an employer sector, and each cell shows what share of that occupation's postings the sector accounts for. Hover any cell for the exact count.</div>
       <div class="card-body"><div id="chart-cross"></div></div>
     </div>
   </div>
@@ -103,9 +103,15 @@
     </div>
     <div class="card card-g">
       <div class="card-head">Who Is Hiring?</div>
-      <div class="card-sub">This shows how demand is distributed across employer sectors, measured as a percentage of all postings.</div>
+      <div class="card-sub">The ten largest employer sectors by demand, each measured as a percentage of all postings. The Data Explorer tab carries the full sector list and a guide to what each category includes.</div>
       <div class="card-body"><div id="chart-isic" style="height:240px"></div></div>
     </div>
+  </div>
+
+  <div class="card card-t" style="margin-top:14px">
+    <div class="card-head">Regions ranked by posting volume</div>
+    <div class="card-sub">The ten German states holding the most postings in the current selection, so the geography of demand is visible at a glance. The Top Tiers tab carries the full regional analysis.</div>
+    <div class="card-body"><div id="ov-region-pareto" style="height:280px"></div></div>
   </div>
 </section>
 
@@ -175,11 +181,6 @@
       <div class="card-sub">The same ranked occupations, split by the employer sectors advertising them. This shows immediately whether an occupation is hired directly by hotels, restaurants or transport firms, or predominantly through staffing agencies.</div>
       <div class="card-body"><div id="tier-occ-sector"></div></div>
     </div>
-    <div class="card card-g" style="margin-bottom:14px">
-      <div class="card-head">How concentrated is demand across occupations?</div>
-      <div class="card-sub">The bars show each occupation's share of postings, ranked from largest to smallest, so the shape of the drop-off tells you how few occupations account for the bulk of demand.</div>
-      <div class="card-body"><div id="tier-occ-pareto" style="height:300px"></div></div>
-    </div>
     <div class="card card-b">
       <div class="card-head">Full ranked table of occupations</div>
       <div class="card-sub">The same ranking in tabular form, including the parent ISCO-3 minor group, the leading employer sector and the leading region for each occupation.</div>
@@ -190,16 +191,6 @@
   <!-- JOB TITLES -->
   <div id="tv-title" class="sub-panel">
 <div class="kpi-row"><div class="kpi-card"><div class="kpi-accent" style="background:#1A7B7A"></div><div class="kpi-body" id="ttit-k1"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#C98A0B"></div><div class="kpi-body" id="ttit-k2"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#5B7C8D"></div><div class="kpi-body" id="ttit-k3"></div></div><div class="kpi-card"><div class="kpi-accent" style="background:#0F5B5A"></div><div class="kpi-body" id="ttit-k4"></div></div></div>
-    <div class="card card-t" style="margin-bottom:14px">
-      <div class="card-head">Ranked job titles exactly as employers advertised them</div>
-      <div class="card-sub">Job titles are the wording candidates actually search for and recognise, whereas ISCO codes are the standardised classification behind them. Comparing the two shows how German employers describe the roles a standardised code covers.</div>
-      <div class="card-body"><div id="tier-title-bar"></div></div>
-    </div>
-    <div class="card card-g" style="margin-bottom:14px">
-      <div class="card-head">Which occupations the leading titles belong to</div>
-      <div class="card-sub">All postings carrying the ranked titles above, aggregated by the ISCO-4 occupation they were classified into. This connects employer wording to the standardised classification.</div>
-      <div class="card-body"><div id="tier-title-map"></div></div>
-    </div>
     <div class="card card-b">
       <div class="card-head">Full ranked table of advertised job titles</div>
       <div class="card-sub">Each advertised title with the number of postings, the ISCO-4 occupation it was classified into, and the employer sector that advertises it most often.</div>
@@ -302,9 +293,14 @@
     <div class="tbl-wrap" id="explorer-table"></div>
   </div>
   <div class="card card-g" style="margin-bottom:14px">
-    <div class="card-head">Employer Sector Summary (ISIC-4 Level)</div>
-    <div class="card-sub">The same aggregate view for employer sectors: each ISIC Rev.4 activity with its official 4-digit code from the dataset, posting count, share open to part-time work, the leading occupation it hires, and its leading state.</div>
+    <div class="card-head">Employer Sector Summary (ISIC-2 Level)</div>
+    <div class="card-sub">The same aggregate view for employer sectors: each employer sector exactly as named in the dataset’s Employer_Category column, posting count, share open to part-time work, the leading occupation it hires, and its leading state.</div>
     <div class="tbl-wrap" id="explorer-isic-table"></div>
+  </div>
+  <div class="card card-b" style="margin-bottom:14px">
+    <div class="card-head">Employer Sector Reference Guide</div>
+    <div class="card-sub">What kind of businesses sit within each ISIC Rev.4 category, so figures like "Accommodation" can be read correctly — it covers hotels, motels, inns, guesthouses and hostels. Sectors are listed by posting volume in the current data.</div>
+    <div class="tbl-wrap" id="explorer-isic-guide"></div>
   </div>
   <div class="card card-b">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 4px;gap:12px;flex-wrap:wrap">
@@ -389,13 +385,13 @@
 <div id="static-tabs"><!-- About/Methods, Qualifications etc. injected from /content --></div>
 
 <footer id="footer">
-  GATI Foundation · <span id="foot-sector">Sector</span> Labour Market Intelligence · Data: StepStone Germany · Classification: ISCO-08 (ILO), employer sector (ISIC Rev.4) · Build 20260720-3
+  GATI Foundation · <span id="foot-sector">Sector</span> Labour Market Intelligence · Data: StepStone Germany · Classification: ISCO-08 (ILO), employer sector (ISIC Rev.4) · Build 20260721-3
 </footer>
 
-<script src="assets/js/sectors.js?v=20260720-3"></script>
-<script src="assets/js/data-loader.js?v=20260720-3"></script>
-<script src="assets/js/role-meta.js?v=20260720-3"></script>
-<script src="assets/js/chart-kit.js?v=20260720-3"></script>
-<script src="assets/js/dashboard.js?v=20260720-3"></script>
+<script src="assets/js/sectors.js?v=20260721-3"></script>
+<script src="assets/js/data-loader.js?v=20260721-3"></script>
+<script src="assets/js/role-meta.js?v=20260721-3"></script>
+<script src="assets/js/chart-kit.js?v=20260721-3"></script>
+<script src="assets/js/dashboard.js?v=20260721-3"></script>
 </body>
 </html>
