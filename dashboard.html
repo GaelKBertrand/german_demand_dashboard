@@ -403,7 +403,7 @@
         
         tabButtons.forEach(btn => {
             const text = btn.textContent.trim();
-            if ((text === 'About & Methods' || text === 'Qualifications and Skills') && 
+            if ((text === 'About & Methods' || text === 'Qualifications & Skills') && 
                 !btn.innerHTML.includes('draft')) {
                 btn.innerHTML = text + ' <span style="font-size:10px;color:#D4940A;font-weight:400;background:#FFF5E0;padding:2px 6px;border-radius:10px;margin-left:4px;">draft</span>';
                 modified = true;
