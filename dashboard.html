@@ -395,35 +395,54 @@
 <script src="assets/js/dashboard.js?v=20260721-3"></script>
 
 <script>
-// This will run after all scripts have loaded
-(function addDraftBadges() {
-    // Try multiple times with increasing delays
-    const attempts = [100, 300, 500, 1000];
-    
-    function tryAddBadge(delay) {
-        setTimeout(function() {
-            const tabButtons = document.querySelectorAll('#tab-nav .tab-btn');
-            let found = false;
-            
-            tabButtons.forEach(btn => {
-                const text = btn.textContent.trim();
-                if ((text === 'About & Methods' || text === 'Qualifications and Skills') && 
-                    !btn.innerHTML.includes('draft')) {
-                    btn.innerHTML = text + ' <span style="font-size:10px;color:#D4940A;font-weight:400;">(draft)</span>';
-                    found = true;
-                    console.log('Added draft badge to:', text);
+(function() {
+    // Function to add draft badges
+    function addDraftBadges() {
+        const tabButtons = document.querySelectorAll('#tab-nav .tab-btn');
+        let modified = false;
+        
+        tabButtons.forEach(btn => {
+            const text = btn.textContent.trim();
+            if ((text === 'About & Methods' || text === 'Qualifications and Skills') && 
+                !btn.innerHTML.includes('draft')) {
+                btn.innerHTML = text + ' <span style="font-size:10px;color:#D4940A;font-weight:400;background:#FFF5E0;padding:2px 6px;border-radius:10px;margin-left:4px;">draft</span>';
+                modified = true;
+                console.log('✅ Added draft badge to:', text);
+            }
+        });
+        return modified;
+    }
+
+    // Watch for changes to the navigation
+    const nav = document.getElementById('tab-nav');
+    if (nav) {
+        // Try immediately
+        addDraftBadges();
+        
+        // Set up observer to watch for new tabs being added
+        const observer = new MutationObserver(function(mutations) {
+            // Check if any new nodes were added
+            let hasNewTabs = false;
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    hasNewTabs = true;
                 }
             });
             
-            // If not found yet, try again
-            if (!found) {
-                const nextDelay = attempts.shift();
-                if (nextDelay) tryAddBadge(nextDelay);
+            if (hasNewTabs) {
+                console.log('🔄 New tabs detected, adding badges...');
+                addDraftBadges();
             }
-        }, delay);
+        });
+        
+        // Start observing
+        observer.observe(nav, { 
+            childList: true, 
+            subtree: false 
+        });
+        
+        console.log('👀 Watching for new tabs...');
     }
-    
-    tryAddBadge(100);
 })();
 </script>
 
